@@ -1,0 +1,17 @@
+{
+  "name": "shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Single source of truth for models, settings, enums and errors. Copied into web/ and worker/ by scripts/sync-shared.mjs — never imported directly.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "sync": "node ../scripts/sync-shared.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "mongoose": "^9.10.2",
+    "typescript": "^5.9.3",
+    "zod": "^4.6.5"
+  }
+}

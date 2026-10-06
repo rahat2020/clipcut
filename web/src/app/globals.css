@@ -1,0 +1,139 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * "Cutroom" theme — dark-first editing-suite look with one sharp accent.
+ * Source of truth for every color, font and radius in the UI; the approved mockup is
+ * linked from docs/DESIGN.md. Change values HERE, never hard-code hexes in components.
+ * The app is dark-only for now (html has class="dark"); a light palette can be added
+ * later under :root without touching components.
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist), var(--font-hind), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-bricolage), var(--font-hind), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Cutroom extras */
+  --color-sunken: var(--sunken);
+  --color-raised: var(--raised);
+  --color-line-strong: var(--line-strong);
+  --color-subtle: var(--subtle);
+  --color-info: var(--info);
+  --color-warning: var(--warning);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root,
+.dark {
+  /* ground → surfaces, darkest to lightest */
+  --background: #0e0d0c; /* page */
+  --sunken: #121110; /* sidebar, insets, inputs */
+  --card: #161513; /* cards */
+  --raised: #1d1b19; /* selected rows, hover */
+  --border: #2b2926;
+  --line-strong: #3a3733;
+
+  --foreground: #f2efea;
+  --muted-foreground: #a9a39a; /* secondary text */
+  --subtle: #8c857c; /* captions, timestamps — still 5:1 on --background */
+
+  --primary: #c8f169; /* the one accent: main actions, high scores, "ready" */
+  --primary-foreground: #12110f;
+  --info: #7cc4ff; /* processing */
+  --warning: #f2c14e; /* near a limit, mid scores */
+  --destructive: #ff8a65; /* failed, reject */
+
+  --card-foreground: var(--foreground);
+  --popover: var(--raised);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--raised);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--raised);
+  --accent: #252320; /* shadcn "accent" = hover/active surface, not the brand accent */
+  --accent-foreground: var(--foreground);
+  --input: var(--line-strong);
+  --ring: color-mix(in srgb, var(--primary) 70%, transparent);
+
+  --chart-1: var(--primary);
+  --chart-2: var(--info);
+  --chart-3: var(--warning);
+  --chart-4: var(--destructive);
+  --chart-5: #6e6962;
+
+  --radius: 0.625rem; /* 10px buttons · xl 14px cards · 2xl 18px panels */
+
+  --sidebar: var(--sunken);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--raised);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Bangla glyphs sit taller than Latin; give user content (titles, transcripts) room. */
+  :lang(bn) {
+    line-height: 1.6;
+  }
+}

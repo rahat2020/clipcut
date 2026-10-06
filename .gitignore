@@ -1,0 +1,43 @@
+# ── Secrets ─────────────────────────────────────────────
+# Real keys live only in .env.local files. Never commit them.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── Dependencies ────────────────────────────────────────
+node_modules/
+
+# ── Build output ────────────────────────────────────────
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Worker scratch space (downloaded videos, renders) ──
+.scratch/
+
+# ── Media test files (big, never commit) ───────────────
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
+
+# ── Logs ────────────────────────────────────────────────
+npm-debug.log*
+*.log
+
+# ── OS / editor ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# ── Deploy tooling ──────────────────────────────────────
+.vercel

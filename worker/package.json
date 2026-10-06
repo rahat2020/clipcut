@@ -1,0 +1,44 @@
+{
+  "name": "worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Background job processor: download, transcribe, pick clips, render.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "predev": "node ../scripts/sync-shared.mjs",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "check": "tsx scripts/check-services.ts",
+    "typecheck": "tsc --noEmit",
+    "pretypecheck": "node ../scripts/sync-shared.mjs",
+    "migrate": "tsx scripts/migrate.ts",
+    "db:indexes": "tsx scripts/db-indexes.ts",
+    "db:smoke": "tsx scripts/db-smoke-test.ts",
+    "shared:check": "node ../scripts/sync-shared.mjs --check",
+    "pipeline:smoke": "tsx scripts/pipeline-smoke-test.ts",
+    "media:smoke": "tsx scripts/media-smoke-test.ts",
+    "transcribe:smoke": "tsx scripts/transcribe-smoke-test.ts",
+    "clips:smoke": "tsx scripts/clips-smoke-test.ts",
+    "render:smoke": "tsx scripts/render-smoke-test.ts",
+    "copy:smoke": "tsx scripts/copy-smoke-test.ts",
+    "cleanup:smoke": "tsx scripts/cleanup-smoke-test.ts",
+    "cleanup:run": "tsx scripts/cleanup-run.ts"
+  },
+  "dependencies": {
+    "bullmq": "^6.3.9",
+    "cloudinary": "^2.11.0",
+    "ioredis": "^6.0.0",
+    "mongoose": "^9.10.2",
+    "pino": "^9.14.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "pino-pretty": "^13.1.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
