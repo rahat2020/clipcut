@@ -519,3 +519,54 @@ touches a video whose newest file is under 24 h old, deletes at most 20 videos p
 kill switch `settings.system.cleanupEnabled`, and `npm run cleanup:run` is a dry run by default
 (`-- --apply` deletes, `-- --orphans` adds the scan). **Deploy note:** `CLOUDINARY_FOLDER` must differ
 between dev and production, because the orphan scan treats every file under its folder as its own.
+
+**D52. A video that was already charged is never refused for lack of minutes; a missing unique index stops the worker.**
+(Step 17, 2026-10-06.) D33 already made the charge idempotent (ledger key `video:<id>:transcribe`, unique
+index), so a retried job, user Retry or admin re-run can't charge twice. The check was the other way round:
+`retryVideo` (web) and the `ingest` stage (worker, on a re-run) re-ran the "minutes left?" rule against the
+user's total, which already contained this video's minutes — a user at 195/200 whose 10-minute video was charged
+and then failed in analyze was told `QUOTA_EXCEEDED` and couldn't finish a video they had paid for. Now
+`videoWasCharged(videoId)` (shared/usage.ts) is consulted and the minutes-left part is skipped
+(`assertUploadAllowed({alreadyCharged})`, `assertLengthAllowed(…, alreadyCharged)`); the plan's maximum
+LENGTH still applies. The test of the double-charge rule also showed that it depends on the unique index
+existing: production never builds indexes by itself (`autoIndex` off, `npm run db:indexes` by hand), so a
+forgotten step would have let retries charge twice without any error. The worker now calls
+`assertUniqueIndexes()` at boot in production (every unique index of every schema must exist) and refuses
+to start with "run npm run db:indexes". **Step 18 checklist: run `npm run db:indexes` and `npm run migrate`
+against the production database before the first worker start.**
+
+**D53. Backups, per-user rate limits, error pages.** (Step 17, 2026-10-06.)
+*Backups.* Atlas M0 has no backups. `lib/backup.ts` writes the whole database to ONE gzip file of JSON
+lines in Extended JSON (ObjectIds, Dates and numbers keep their types; plain JSON would not), with a header
+and a closing line carrying the document counts — a file cut short or with missing documents is refused
+before anything is written. `npm run db:backup` (to `D:\backups`, newest 14 kept; `-- --cloud` also uploads),
+`npm run db:restore -- <file> --into <db>` (never into the live database unless `--replace-live`; refuses a
+database that already has documents unless `--drop`; `--cloud latest` pulls the newest from Cloudinary).
+In production the worker makes one backup a day by itself: checks every 3 h, backs up when the last good
+one is older than 20 h, uploads to private raw `<folder>/backups/<db>/` in Cloudinary and keeps the newest 7;
+the result (or the error, logged loudly) is in Redis `backup:last` for the admin dashboard (Step 16);
+kill switch `settings.system.backupEnabled`. Cloudinary facts found by testing: its normal delivery link
+refuses a .gz ("401 Untrusted File Access") — downloads use the API-signed `private_download_url`; the free
+plan refuses raw files over ~10 MB, so a bigger backup is reported as a clear error (move backups elsewhere
+or upgrade then). Verified on the real database: 87 documents backed up, restored into a new database,
+every document compared — identical. Deleted users' data stays in backups until they rotate out (7 days).
+*Rate limits.* `lib/rate-limit-core.ts` holds one table of per-user, per-kind limits (polling 300/min,
+edits 90/min, uploads 30/h, retries 10 per 10 min, renders 40 per 10 min, AI requests 20 per 10 min,
+downloads 120 per 10 min) and every API route takes its bucket with `limitUser`; the refusal is
+`RATE_LIMITED` with "try again in N seconds". Redis down → allowed (availability beats strictness).
+*Error pages.* `error.tsx` (inside the app shell, and a plain one for the rest), `global-error.tsx`
+(root layout failed) and a branded `not-found.tsx`; they show a short message, "Try again", "Go to Home"
+and Next's `digest` as a reference — never the error. Four processing error messages now say what to
+do next (`DOWNLOAD_FAILED`, `TRANSCRIPTION_FAILED`, `FFMPEG_FAILED`, `MEDIA_EXPIRED`).
+
+**D54. Admin settings pages: preview before anything that deletes, guards on the server.** (Step 16, 2026-10-06.)
+Limits, retention and system are edited as whole groups with the version they were loaded at (stale → refused), like
+the AI page. Rules that live in `lib/admin/settings-service.ts`, not in the browser: a plan with users on it can't be
+removed and new plan names are plain lower-case words; a retention change is *previewed on the real videos* first
+(`retention-impact.ts`, pure) and, when it deletes sooner, saving needs the new value typed — the server recomputes the
+preview and refuses a wrong or missing confirmation, so a stale browser tab can't skip it. The impact compares each
+video's deletion date before and after, treating an already-overdue video as "due now" on both sides (otherwise a video
+that was overdue and stays due would read as "kept longer"); the grace period is shown as the earliest deletion time.
+Per-video expiry is an override date ("keep N more days from today") — only while the files exist. The System page
+shows facts and never runs anything (migrations stay `npm run migrate`; no raw editor, ADMIN.md §3). The dashboard's
+Cloudinary number comes from its usage API (cached 10 min), MongoDB's from `dbStats` (data + indexes against 512 MB).

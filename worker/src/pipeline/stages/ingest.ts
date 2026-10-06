@@ -1,6 +1,6 @@
 import { probeMedia } from "../../services/media/ffprobe";
 import { probeYouTube } from "../../services/media/ytdlp";
-import { AppError, getSettings } from "../../shared";
+import { AppError, getSettings, videoWasCharged } from "../../shared";
 import { assertLengthAllowed, limitsFor } from "../limits";
 import { ensureSource } from "../source";
 import type { StageHandler } from "./types";
@@ -19,6 +19,8 @@ const LIVE_STATES = new Set(["is_live", "is_upcoming", "post_live"]);
 export const ingest: StageHandler = async (ctx) => {
   const { video, run, log } = ctx;
   const { user, limits } = await limitsFor(video);
+  // A video whose minutes were charged earlier (re-run, retry) isn't refused for lack of minutes again.
+  const charged = await videoWasCharged(video._id);
 
   if (video.source.type === "youtube") {
     const system = await getSettings("system");
@@ -35,7 +37,7 @@ export const ingest: StageHandler = async (ctx) => {
     if ((info.availability && !PUBLIC_AVAILABILITY.has(info.availability)) || info.ageLimit >= 18) {
       throw new AppError("VIDEO_UNAVAILABLE");
     }
-    if (info.durationMs) assertLengthAllowed(info.durationMs, user, limits);
+    if (info.durationMs) assertLengthAllowed(info.durationMs, user, limits, new Date(), charged);
     await run.reportProgress(0.05);
   }
 
@@ -45,7 +47,7 @@ export const ingest: StageHandler = async (ctx) => {
 
   if (!probe.hasVideo || probe.durationMs <= 0) throw new AppError("NOT_A_VIDEO");
   if (!probe.hasAudio) throw new AppError("NO_AUDIO_TRACK");
-  assertLengthAllowed(probe.durationMs, user, limits);
+  assertLengthAllowed(probe.durationMs, user, limits, new Date(), charged);
 
   const media = {
     durationMs: probe.durationMs,

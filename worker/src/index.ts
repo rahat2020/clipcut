@@ -6,10 +6,12 @@ import { Worker } from "bullmq";
 import { env } from "./config/env";
 import { connectDb } from "./lib/db";
 import { logger } from "./lib/logger";
+import { assertUniqueIndexes } from "./lib/indexes";
 import { every } from "./lib/loop";
 import { clearPresence, publishPresence, WORKER_ID } from "./lib/presence";
 import { bullConnection } from "./lib/redis";
 import { onShutdown, runShutdownHooks } from "./lib/shutdown";
+import { scheduledBackup } from "./backup/schedule";
 import { scheduledCleanup } from "./cleanup/schedule";
 import { Dispatcher } from "./pipeline/dispatcher";
 import { processPipelineJob } from "./processors/pipeline-processor";
@@ -18,6 +20,7 @@ import { createPipelineQueue } from "./queues/pipeline-queue";
 import { createRenderQueue } from "./queues/render-queue";
 import { RenderDispatcher } from "./renders/dispatcher";
 import {
+  BACKUP_TIMING,
   CLEANUP_TIMING,
   getSettings,
   getSettingsSnapshot,
@@ -71,6 +74,8 @@ async function main(): Promise<void> {
 
   const conn = await connectDb();
   logger.info({ host: conn.connection.host, db: conn.connection.name }, "connected to MongoDB");
+  // Production never builds indexes by itself; a missing UNIQUE one (the charge ledger!) would break rules silently.
+  if (env.NODE_ENV === "production") await assertUniqueIndexes();
 
   const ai = await getSettingsSnapshot("ai");
   if (ai.invalid) logger.warn("stored AI settings don't match the schema — running on defaults");
@@ -127,12 +132,16 @@ async function main(): Promise<void> {
   const stopOrphanScan = every("cleanup-orphans", CLEANUP_TIMING.orphanScanEveryMs, async () => {
     await scheduledCleanup({ orphans: true });
   });
+  // MongoDB has no backups of its own on the free plan: one a day to Cloudinary, newest 7 kept (D53).
+  const stopBackup = every("backup", BACKUP_TIMING.checkEveryMs, async () => {
+    await scheduledBackup();
+  });
   const stopPresence = every("presence", WORKER_PRESENCE.intervalMs, async () => {
     await publishPresence(queue, { concurrency, activeJobs: Math.max(inFlight, 0) });
   });
   // Registered last → runs first: stop feeding the queue before the worker closes.
   onShutdown(async () => {
-    await Promise.all([stopDispatch(), stopRecover(), stopPresence(), stopRenderDispatch(), stopRenderRecover(), stopCleanup(), stopOrphanScan()]);
+    await Promise.all([stopDispatch(), stopRecover(), stopPresence(), stopRenderDispatch(), stopRenderRecover(), stopCleanup(), stopOrphanScan(), stopBackup()]);
     await clearPresence().catch(() => {});
   });
 

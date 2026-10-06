@@ -104,6 +104,25 @@ export const CLEANUP_TIMING = {
   lockSeconds: 15 * 60,
 } as const;
 
+/** The database backup (Step 17, D53). */
+export const BACKUP_TIMING = {
+  /** The worker looks this often whether a backup is due… */
+  checkEveryMs: 3 * 60 * 60_000,
+  /** …and makes one when the last good one is older than this. */
+  minGapMs: 20 * 60 * 60_000,
+  /** Backups kept in Cloudinary (the newest). */
+  keep: 7,
+  /** Cloudinary's free plan refuses larger raw files; a bigger backup is reported loudly instead of failing quietly. */
+  maxBytes: 9 * 1024 * 1024,
+  /** Redis keys: the lock (one backup at a time) and the last result (the admin panel reads it, Step 16). */
+  lockKey: "backup:lock",
+  lastKey: "backup:last",
+  lockSeconds: 15 * 60,
+} as const;
+
+/** What the worker stores in Redis `backup:last` after each try (the admin panel shows it). */
+export type LastBackup = { at: string; bytes: number; docs: number; file: string; error?: undefined } | { at: string; error: string };
+
 export const PIPELINE_TIMING = {
   /** Worker touches `pipeline.heartbeatAt` this often while a job runs. */
   heartbeatMs: 30_000,

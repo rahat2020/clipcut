@@ -38,11 +38,11 @@ export const ERROR_SPECS = {
     retryable: false,
     message: "This video can't be accessed. Check the link and make sure you have permission to use it.",
   },
-  MEDIA_EXPIRED: { status: 410, retryable: false, message: "This video's files have expired and were deleted." },
+  MEDIA_EXPIRED: { status: 410, retryable: false, message: "This video's files have expired and were deleted. Your titles and transcript are still here; upload the video again to make new clips." },
 
   // processing
-  DOWNLOAD_FAILED: { status: 502, retryable: true, message: "We couldn't download the video." },
-  TRANSCRIPTION_FAILED: { status: 502, retryable: true, message: "We couldn't transcribe the audio." },
+  DOWNLOAD_FAILED: { status: 502, retryable: true, message: "We couldn't download the video. Try again; if it keeps failing, check that the link is public." },
+  TRANSCRIPTION_FAILED: { status: 502, retryable: true, message: "We couldn't transcribe the audio. Try again in a few minutes." },
   AI_UNAVAILABLE: { status: 503, retryable: true, message: "The AI service is busy. We'll retry automatically." },
   AI_OUTPUT_INVALID: { status: 502, retryable: true, message: "The AI returned an unusable answer. We'll retry." },
   AI_DAILY_CAP_REACHED: { status: 503, retryable: true, message: "Today's AI capacity is used up. Processing resumes automatically when it comes back." },
@@ -51,7 +51,7 @@ export const ERROR_SPECS = {
     retryable: false,
     message: "We couldn't find a moment in this video that works as a short clip.",
   },
-  FFMPEG_FAILED: { status: 500, retryable: true, message: "Video processing failed." },
+  FFMPEG_FAILED: { status: 500, retryable: true, message: "We couldn't process this video file. Try again; if it keeps failing, export it as an MP4 and upload that." },
   STORAGE_FAILED: { status: 502, retryable: true, message: "We couldn't save the file. We'll retry." },
   PROCESSING_STALLED: { status: 500, retryable: true, message: "Processing stopped unexpectedly. Please try again." },
   /** Development only: the pipeline reached a stage whose code isn't built yet (PROGRESS.md). */

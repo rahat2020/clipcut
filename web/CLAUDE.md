@@ -60,11 +60,12 @@ src/lib/uploads/    cloudinary-core.ts (tickets, inspect, signed URLs) · rules.
 src/lib/videos/     upload-service.ts (request → finalize → retry → delete) · schemas.ts (zod, client-safe)
                     · progress.ts (server) / progress-view.ts (client-safe type) for polling
                     · youtube-url.ts (parse, client-safe) · youtube-service.ts (oEmbed + submit)
+src/lib/rate-limit-core.ts  RATE_LIMITS table + consumeRateLimit (testable) · limitUser(user, bucket) in lib/redis.ts — every API route calls it
 src/lib/redis.ts    worker presence + daily AI counters (admin panel), admin rate limit — never the job queue (D35)
-src/lib/admin/      videos-service · users-service · ai-service (no server-only; admin:smoke runs them)
+src/lib/admin/      videos-service · users-service · ai-service · settings-service (limits, retention, system, per-video expiry) · retention-impact · audit-service · system-info (+ system-types, client-safe) (no server-only; admin:smoke runs them)
                     · action.ts runAdminAction(): requireAdmin + rate limit + safe error → ActionResult
 src/app/admin/*/actions.ts   server actions ("use server"), one per admin action, each via runAdminAction
-src/components/admin/  admin-nav, ui (Panel, Facts, NativeSelect, Pagination, Tag), action-button
+src/components/admin/  admin-nav, ui (Panel, Facts, NativeSelect, Pagination, Tag), form-parts (FormSection, SwitchField, NumberField, SaveBar), health-cards, action-button
                     (confirm dialog + typed confirmation), rerun-clips-form, user-forms, ai-settings-form
 src/components/providers.tsx  TanStack Query client
 src/proxy.ts        Clerk; signed-out visitors to /dashboard, /videos, /admin → sign-in
@@ -104,9 +105,10 @@ scripts/            standalone tsx scripts (check-services.ts, auth-smoke-test.t
 npm run dev         # http://localhost:4000
 npm run check       # verify every key in .env.local against the real services
 npm run auth:smoke  # 19 user-sync / admin-bootstrap / access checks in a throwaway DB
-npm run upload:smoke # 28 upload + retry + YouTube checks: real Cloudinary (smoketest/) + throwaway DB
-npm run admin:smoke  # 14 admin checks: videos, users, AI settings; real DB/Cloudinary/model lists, 1 Gemini call
-npm run review:smoke # 15 checks: clip review, render requests, Find new clips, kept clips, post text edits + rewrite/Banglish requests — throwaway DB
+npm run upload:smoke # 30 upload + retry + YouTube checks: real Cloudinary (smoketest/) + throwaway DB
+npm run admin:smoke  # 26 admin checks: videos, users, AI settings, limits, retention (impact + confirmation), system, audit; real DB/Cloudinary/model lists, 1 Gemini call
+npm run review:smoke # 16 checks (incl. per-user rate limits): clip review, render requests, Find new clips, kept clips, post text edits + rewrite/Banglish requests — throwaway DB
+# Admin forms with fake data, no sign-in (dev only): http://localhost:4000/dev/admin?view=limits|retention|system|health|impact|expiry
 # Layout check without signing in (dev only): http://localhost:4000/dev/workspace — screenshot at 1280×600 / 1366×650 / 1920×950
 npm run typecheck   # sync shared + next typegen + tsc --noEmit
 npm run lint

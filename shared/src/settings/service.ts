@@ -131,7 +131,7 @@ export async function updateSettings<G extends SettingsGroup>(
  * `changedAt` is never taken from the admin's input: it's set to now when any plan's
  * retention days changed, otherwise kept. It drives the grace period in retention.ts.
  */
-function stampRetentionChange(before: SettingsOf<"retention">, after: SettingsOf<"retention">): SettingsOf<"retention"> {
+export function stampRetentionChange(before: SettingsOf<"retention">, after: SettingsOf<"retention">): SettingsOf<"retention"> {
   const plans = new Set([...Object.keys(before.plans), ...Object.keys(after.plans)]);
   const daysChanged = [...plans].some((p) => before.plans[p]?.days !== after.plans[p]?.days);
   return { ...after, changedAt: daysChanged ? new Date() : before.changedAt };

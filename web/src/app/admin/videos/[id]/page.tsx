@@ -4,7 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { cancelVideoAction, deleteVideoAction, rerunClipsAction, retryVideoAction } from "@/app/admin/videos/actions";
+import { setVideoExpiryAction } from "@/app/admin/settings/actions";
 import { ActionButton } from "@/components/admin/action-button";
+import { ExpiryForm } from "@/components/admin/expiry-form";
 import { RerunClipsForm } from "@/components/admin/rerun-clips-form";
 import { Empty, Facts, PageHeader, Panel, Tag } from "@/components/admin/ui";
 import { StatusBadge } from "@/components/app/status-badge";
@@ -18,7 +20,7 @@ import { formatDuration, formatUtc, fromNow } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { LANGUAGE_NAMES, MOMENT_LABELS, STAGE_LABELS } from "@/lib/video-labels";
-import { ACTIVE_VIDEO_STATUSES, getSettings, PROMPT_VERSIONS, STAGE_NAMES, type MomentType } from "@/shared";
+import { ACTIVE_VIDEO_STATUSES, DEFAULT_PLAN, effectiveExpiry, getSettings, PROMPT_VERSIONS, STAGE_NAMES, type MomentType } from "@/shared";
 
 export const metadata: Metadata = { title: "Video · Admin" };
 
@@ -46,7 +48,8 @@ export default async function AdminVideoPage({ params, searchParams }: PageProps
   if (!data) notFound();
   const { video, owner, transcript, runs, clips, selectedRunId, usage, audit } = data;
 
-  const ai = await getSettings("ai");
+  const [ai, retention] = await Promise.all([getSettings("ai"), getSettings("retention")]);
+  const filesExpiry = effectiveExpiry(video, owner?.plan ?? DEFAULT_PLAN, retention);
   const keys = { gemini: env.GEMINI_API_KEY, groq: env.GROQ_API_KEY };
   const [gemini, groq] = await Promise.all([listModels("gemini", "text", keys), listModels("groq", "text", keys)]);
 
@@ -156,6 +159,28 @@ export default async function AdminVideoPage({ params, searchParams }: PageProps
           <p className="mx-4.5 mb-4 text-sm text-info">
             Clip re-pick requested by {pending.requestedBy} {fromNow(pending.at)}: {pending.provider} · {pending.model} · {pending.promptVersion}
           </p>
+        )}
+      </Panel>
+
+      <Panel
+        title="Files"
+        aside={
+          video.retention?.assetsDeletedAt ? (
+            <Tag tone="danger">Deleted {fromNow(video.retention.assetsDeletedAt)}</Tag>
+          ) : filesExpiry ? (
+            <span>
+              Kept until {formatUtc(filesExpiry)} · {fromNow(filesExpiry)}
+              {video.retention?.expireOverrideAt ? " · custom date" : ""}
+            </span>
+          ) : (
+            "Clock starts when processing ends"
+          )
+        }
+      >
+        {!deleted && !video.retention?.assetsDeletedAt ? (
+          <ExpiryForm hasOverride={!!video.retention?.expireOverrideAt} action={setVideoExpiryAction.bind(null, id)} />
+        ) : (
+          <p className="px-4.5 py-4 text-sm text-subtle">The files are gone, so there is nothing to keep.</p>
         )}
       </Panel>
 

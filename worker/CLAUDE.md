@@ -19,6 +19,7 @@ src/lib/shutdown.ts       onShutdown(hook) registry (index.ts runs it on SIGINT/
 src/lib/migrations.ts     runMigrations() / migrationStatus() with a lock document
 src/lib/redis.ts          bullConnection() options for BullMQ · redis() client for our own keys
 src/lib/presence.ts       worker:<id>:heartbeat in Redis (admin panel reads it)
+src/lib/indexes.ts        assertUniqueIndexes() — at boot in production: a missing unique index (the charge ledger!) stops the worker
 src/lib/loop.ts           every(name, ms, task) — non-overlapping background loop
 src/queues/pipeline-queue.ts  queue + job options (3 attempts, 10 s backoff) · enqueueRun()
 src/pipeline/dispatcher.ts    queued videos → BullMQ (every 5 s) · stuck-run recovery (every 60 s)
@@ -36,6 +37,7 @@ src/services/transcription/  groq.ts (Whisper call) · normalize.ts (pure clean-
 src/services/ai/daily-caps.ts  reserveDailyCap() — Redis counters vs settings.ai.dailyCaps
 src/services/ai/llm.ts   generateJson() — the LLMProvider: retries, fallback chain, caps (gemini.ts, groq-chat.ts)
 src/services/clips/      lines.ts (transcript → numbered lines) · prompt.ts (versioned prompts) · moments.ts (lines → clips)
+src/lib/backup.ts       writeBackup / readBackup / restoreBackup (gzip Extended JSON) · src/backup/ storage.ts (Cloudinary) + schedule.ts (daily)
 src/cleanup/            cleanup.ts (sweeps: abandoned, deleted, expired, purge, orphans) · schedule.ts (kill switch + Redis lock)
 src/services/storage/cleanup-storage.ts  deleteVideoFiles() / listStoredVideos() — Cloudinary, by prefix
 src/shared/               GENERATED copy of ../shared/src — never edit here
@@ -83,12 +85,14 @@ npm run check       # verify keys, ffmpeg (libass/HarfBuzz), yt-dlp, scratch dir
 npm run typecheck   # syncs shared, then tsc --noEmit
 npm run migrate     # apply pending migrations (-- --status to list)
 npm run db:indexes  # create missing indexes
-npm run db:smoke    # 28 DB checks in a throwaway database
-npm run pipeline:smoke # 18 queue/pipeline checks (incl. AI-quota wait): real Redis (own prefix) + throwaway DB
+npm run db:smoke    # 29 DB checks in a throwaway database (incl. the missing-unique-index guard)
+npm run pipeline:smoke # 19 queue/pipeline checks (incl. AI-quota wait, charged-once minutes): real Redis (own prefix) + throwaway DB
 npm run media:smoke    # 11 ingest/audio checks: real ffmpeg, yt-dlp, YouTube, Cloudinary smoketest/
 npm run transcribe:smoke # 15 checks: Gemini pieces (D42), Whisper fallback, charging; needs .scratch/fixtures (PROGRESS Step 7)
 npm run clips:smoke    # 24 checks: clip rules, snapping, loudness (ffmpeg), real Gemini/Groq, analyze stage, admin re-run, Find new clips (fake AI)
 npm run render:smoke   # 15 checks (incl. cover frames): captions/ASS, encode (Bangla captions, 60→30 fps), YouTube section, render stage + queue + stuck sweep
+npm run backup:smoke   # 5 checks: backup/restore round trip, damaged files refused, real Cloudinary upload/download
+npm run db:backup      # whole database → D:\backups (-- --cloud also uploads); db:restore -- <file> --into <db> (never the live DB)
 npm run cleanup:smoke  # 8 checks: the cleanup job with a fake Cloudinary (expiry, grace, retry, purge, orphans, guards)
 npm run cleanup:run    # dry run of the cleanup on the real data; -- --apply deletes, -- --orphans scans Cloudinary
 npm run copy:smoke     # 11 checks: post text + cover ideas (cleaning, prompt, real Gemini), cover-only rewrite, Banglish (alignment, real Gemini), copy stage with a fake AI

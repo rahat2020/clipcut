@@ -44,6 +44,8 @@ import {
   minutesUsedThisPeriod,
   planLimitsSchema,
   quotaPeriodEnd,
+  transcribeChargeKey,
+  UsageEvent,
   User,
   Video,
   type PlanLimits,
@@ -164,6 +166,13 @@ async function main() {
       expect(minutesUsedThisPeriod(user) === 0, "old period still counted");
       const c = await codeOf(() => assertUploadAllowed({ user, limits: LIMITS, facts: { bytes: 1, durationMs: 10 * 60_000 }, activeJobs: 0 }));
       expect(c === null, `got ${c}`);
+    });
+    await test("rules: a video whose minutes were already charged skips the minutes-left check, but its length must still fit the plan", async () => {
+      const user = { quota: { periodStart: new Date(), minutesUsed: 60 } };
+      const ok = await codeOf(() => assertUploadAllowed({ user, limits: LIMITS, facts: { bytes: 1, durationMs: 10 * 60_000 }, activeJobs: 0, alreadyCharged: true }));
+      expect(ok === null, `got ${ok}`);
+      const tooLong = await codeOf(() => assertUploadAllowed({ user, limits: LIMITS, facts: { bytes: 1, durationMs: 61 * 60_000 }, activeJobs: 0, alreadyCharged: true }));
+      expect(tooLong === "VIDEO_TOO_LONG", `got ${tooLong}`);
     });
     await test("rules: a job already running → CONCURRENCY_LIMIT", async () => {
       const c = await codeOf(() => assertUploadAllowed({ user: {}, limits: LIMITS, facts: { bytes: 1 }, activeJobs: 1 }));
@@ -292,6 +301,18 @@ async function main() {
       expect(v?.pipeline?.recoveries === 0, "recoveries not reset");
       expect(v?.pipeline?.stages?.transcribe?.status === "pending", "failed stage not reset");
       expect(v?.pipeline?.stages?.ingest?.status === "done", "finished stage was reset");
+    });
+    await test("retry: a video that was charged is never refused for lack of minutes (they're in the total already); an uncharged one still is", async () => {
+      const dana = await User.create({ clerkId: "user_upload_dana", email: "dana@example.com", quota: { periodStart: new Date(), minutesUsed: LIMITS.monthlyMinutes } });
+      const id = await failedVideo(dana, { code: "AI_UNAVAILABLE", retryable: true }); // 1 minute long, 0 minutes left
+      const before = await codeOf(() => retryVideo(ctxFor(dana), String(id)));
+      expect(before === "QUOTA_EXCEEDED", `uncharged: got ${before}`);
+      await UsageEvent.create({ userId: dana._id, videoId: id, type: "transcribe", quantity: 1, unit: "minutes", idempotencyKey: transcribeChargeKey(id), at: new Date() });
+      await retryVideo(ctxFor(dana), String(id));
+      const v = await Video.findById(id).lean();
+      expect(v?.status === "queued" && !v.error, `charged: status ${v?.status}`);
+      const user = await User.findById(dana._id).lean();
+      expect(user?.quota?.minutesUsed === LIMITS.monthlyMinutes, "a retry changed the minutes counter");
     });
     await test("retry: while another video is active → CONCURRENCY_LIMIT; not failed → CONFLICT", async () => {
       const id = await failedVideo(bob, { code: "AI_UNAVAILABLE", retryable: true });

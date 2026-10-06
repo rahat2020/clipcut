@@ -1,6 +1,6 @@
 # Admin panel
 
-Status: **designed 2026-09-28**, built incrementally (see §6). Data model: `docs/SCHEMA.md`
+Status: **designed 2026-09-28**, built incrementally (see §6); **all sections built as of 2026-10-06** (Step 16, D54). Data model: `docs/SCHEMA.md`
 §3.1 (`role`, `status`, `limitsOverride`), §3.9 `settings`, §3.10 `audit_logs`, §3.11 Redis keys.
 
 Purpose: let the owner see and control the whole product from one place — users, videos
@@ -159,4 +159,4 @@ Built alongside the features it controls rather than all at the end:
 | 5 — queue ✅ | Queue + worker-heartbeat cards |
 | 9½ — **admin catch-up** ✅ (2026-09-29) | The Step 5/7/9 pieces that were skipped: **Videos & jobs** (list + filters, video page with pipeline timeline, error, transcript, every clip run, clips AI-proposed vs final, charges, history; retry, cancel, pick clips again with another model/prompt, delete) · **AI models** (per task model/temperature/prompt/fallback/on-off, live model lists, Test button, daily caps with today's usage) · overview AI-today card. **Users** pulled forward from Step 16 at Rahat's request (list + filters, user page, plan, limit override, reset usage, suspend, admin role, delete all data) |
 | 11 — accuracy | Accuracy page |
-| 16 — **admin panel completion** | Dashboard storage card, limits & plans, retention, system switches, audit-log viewer |
+| 16 — **admin panel completion** ✅ (2026-10-06) | Dashboard storage + backup cards, limits & plans, retention with impact preview, system switches + database facts, audit-log viewer, per-video expiry. "Run cleanup now" left out: web/ never talks to the worker (D35) — the cleanup runs every 30 min |

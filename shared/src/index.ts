@@ -17,6 +17,7 @@ export * from "./ownership";
 export * from "./post-copy";
 export * from "./render";
 export * from "./pipeline";
+export * from "./usage";
 export * from "./retention";
 export * from "./settings/schemas";
 export * from "./settings/service";

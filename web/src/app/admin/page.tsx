@@ -1,23 +1,26 @@
 import Link from "next/link";
 
+import { BackupCard, CloudinaryCard, MongoCard } from "@/components/admin/health-cards";
+import { backupHealth, readCloudinaryUsage, readDatabaseInfo } from "@/lib/admin/system-info";
 import { requireAdminPage } from "@/lib/auth/page-guards";
+import { cloudinaryConfig } from "@/lib/cloudinary";
 import { formatUtc, fromNow } from "@/lib/format";
-import { readAiUsageToday, readWorkerStatus } from "@/lib/redis";
+import { readAiUsageToday, readLastBackup, readWorkerStatus } from "@/lib/redis";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { AuditLog, getSettings, getSettingsSnapshot, SETTINGS_GROUPS, User, Video, type AiCapMetric } from "@/shared";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 /**
- * Admin overview. A first slice of the dashboard (docs/ADMIN.md §2); the storage card
- * arrives in Step 16. Loads on open only — no polling.
+ * Admin overview (docs/ADMIN.md §2): key numbers, worker and queue, AI use against the caps,
+ * storage (MongoDB, Cloudinary) and the last backup. Loads on open only — no polling.
  */
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Everything the overview shows, read once per page load. */
 async function loadOverview() {
   const now = new Date();
-  const [users, admins, suspended, videos, processing, failed, settings, recentAudit, worker, aiUsage, ai] = await Promise.all([
+  const [users, admins, suspended, videos, processing, failed, settings, recentAudit, worker, aiUsage, ai, waitingForAi, db, cloudinary, lastBackup] = await Promise.all([
     User.estimatedDocumentCount(),
     User.countDocuments({ role: "admin" }),
     User.countDocuments({ status: "suspended" }),
@@ -29,20 +32,34 @@ async function loadOverview() {
     readWorkerStatus(),
     readAiUsageToday(now),
     getSettings("ai"),
+    Video.countDocuments({ status: "queued", "pipeline.waitUntil": { $gt: now } }),
+    readDatabaseInfo().catch((err: unknown) => {
+      console.error("[admin] database info unavailable", err);
+      return null;
+    }),
+    readCloudinaryUsage(cloudinaryConfig),
+    readLastBackup(),
   ]);
-  return { now, users, admins, suspended, videos, processing, failed, settings, recentAudit, worker, aiUsage, ai };
+  const system = settings.find((s) => s.group === "system")?.value as { processingEnabled?: boolean; backupEnabled?: boolean } | undefined;
+  const backup = backupHealth({ ...lastBackup, enabled: system?.backupEnabled !== false }, now);
+  return { now, users, admins, suspended, videos, processing, failed, settings, recentAudit, worker, aiUsage, ai, waitingForAi, db, cloudinary, backup, system };
 }
 
 export default async function AdminOverviewPage() {
   await requireAdminPage(); // don't rely on the layout alone
-  const { now, users, admins, suspended, videos, processing, failed, settings, recentAudit, worker, aiUsage, ai } = await loadOverview();
-  const system = settings.find((s) => s.group === "system")?.value as { processingEnabled?: boolean } | undefined;
+  const { now, users, admins, suspended, videos, processing, failed, settings, recentAudit, worker, aiUsage, ai, waitingForAi, db, cloudinary, backup, system } = await loadOverview();
 
   const kpis: { label: string; value: number; note: string; href: string; tone?: "info" | "danger" }[] = [
     { label: "Users", value: users, note: `${admins} admin${admins === 1 ? "" : "s"}`, href: ROUTES.adminUsers },
     { label: "Suspended", value: suspended, note: "accounts blocked", href: `${ROUTES.adminUsers}?status=suspended` },
     { label: "Videos", value: videos, note: "all time", href: `${ROUTES.adminVideos}?deleted=all` },
-    { label: "Queued / processing", value: processing, note: "right now", tone: "info", href: `${ROUTES.adminVideos}?status=processing` },
+    {
+      label: "Queued / processing",
+      value: processing,
+      note: waitingForAi > 0 ? `right now · ${waitingForAi} waiting for AI quota` : "right now",
+      tone: "info",
+      href: `${ROUTES.adminVideos}?status=processing`,
+    },
     { label: "Failed", value: failed, note: "last 24 hours", tone: failed > 0 ? "danger" : undefined, href: `${ROUTES.adminVideos}?status=failed` },
   ];
   const caps: { label: string; metric: AiCapMetric; cap: number; perMinute?: boolean }[] = [
@@ -103,6 +120,22 @@ export default async function AdminOverviewPage() {
         ) : (
           <p className="px-4.5 py-6 text-sm text-subtle">Can’t reach Redis, so today’s usage is unknown.</p>
         )}
+      </section>
+
+      <section aria-labelledby="storage-title" className="overflow-hidden rounded-[14px] border bg-card">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4.5 py-3.5">
+          <h2 id="storage-title" className="text-[15px] font-semibold">
+            Storage &amp; backups
+          </h2>
+          <Link href={ROUTES.adminSystem} className="text-sm text-subtle hover:text-foreground">
+            Database details →
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-3">
+          <MongoCard usedBytes={db?.usedBytes ?? null} />
+          <CloudinaryCard usage={cloudinary} />
+          <BackupCard health={backup} />
+        </div>
       </section>
 
       <section aria-labelledby="settings-title" className="overflow-hidden rounded-[14px] border bg-card">

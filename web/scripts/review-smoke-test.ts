@@ -10,6 +10,7 @@ import { loadEnvConfig } from "@next/env";
 import mongoose, { Types } from "mongoose";
 
 import { formatEnvIssues, serverEnvSchema } from "../src/lib/env.schema";
+import { consumeRateLimit, RATE_LIMITS, waitText, type CounterClient } from "../src/lib/rate-limit-core";
 import type { CloudinaryConfig } from "../src/lib/uploads/cloudinary-core";
 import { clipUpdateSchema, updateClip } from "../src/lib/videos/clip-edit";
 import { requestNewClips } from "../src/lib/videos/clip-request";
@@ -104,6 +105,23 @@ async function main() {
     });
     const id = String(clip!._id);
     const read = () => Clip.findById(clip!._id).lean().orFail();
+
+    await test("rate limits (Step 17): the calls up to the limit pass, the next is refused with the wait; a new window and another user start fresh", async () => {
+      const store = new Map<string, number>();
+      const fake: CounterClient = { incr: async (k) => store.set(k, (store.get(k) ?? 0) + 1).get(k)!, expire: async () => 1 };
+      const limit = { max: 3, windowSec: 60 };
+      const t0 = Date.UTC(2026, 9, 6, 12, 0, 10); // 10 s into a window
+      for (let i = 0; i < 3; i++) expect((await consumeRateLimit(fake, "user:a:retry", limit, t0 + i * 1000)).ok, `call ${i + 1} refused`);
+      const refused = await consumeRateLimit(fake, "user:a:retry", limit, t0 + 3000);
+      expect(!refused.ok && refused.retryAfterSec === 47, `wait: ${JSON.stringify(refused)}`); // window ends at :60, now is :13
+      expect((await consumeRateLimit(fake, "user:b:retry", limit, t0)).ok, "another user was refused");
+      expect((await consumeRateLimit(fake, "user:a:retry", limit, t0 + 60_000)).ok, "the next window didn't start fresh");
+      expect(waitText(1) === "1 second" && waitText(47) === "47 seconds" && waitText(200) === "4 minutes", "wait text");
+      // The table: every bucket is a sane positive limit, and uploads/retries/renders are far stricter than polling.
+      for (const [name, l] of Object.entries(RATE_LIMITS)) expect(l.max >= 1 && l.windowSec >= 30, `bucket ${name}`);
+      expect(RATE_LIMITS.read.max / 60 > 2 * 30 / 60 * 2, "polling (2 s per tab) must fit comfortably"); // 30 polls/min per tab → ≥ 10 tabs
+      expect(RATE_LIMITS.retry.max <= 10 && RATE_LIMITS.upload.max <= 30, "expensive actions too loose");
+    });
 
     await test("verdict: approve, reject with a reason, undo clears the reason", async () => {
       await updateClip(ctx, id, { status: "approved" });

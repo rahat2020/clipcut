@@ -14,6 +14,7 @@ import {
   PERMISSION_TERMS_VERSION,
   STAGE_NAMES,
   Video,
+  videoWasCharged,
   type PlanLimits,
   type SettingsOf,
   type VideoDoc,
@@ -182,6 +183,8 @@ export async function retryVideo(ctx: Pick<UploadContext, "user" | "limits" | "n
     limits: ctx.limits,
     facts: { bytes: video.source?.sizeBytes ?? 0, durationMs: video.media?.durationMs ?? null },
     activeJobs: await countActiveJobs(ctx.user._id),
+    // A video that was already charged is never refused for lack of minutes (Step 17).
+    alreadyCharged: await videoWasCharged(_id),
     now: ctx.now,
   });
 

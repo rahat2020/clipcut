@@ -18,6 +18,8 @@ import { logger } from "../src/lib/logger";
 import { TransferMeter } from "../src/lib/transfer";
 import { bullConnection } from "../src/lib/redis";
 import { runShutdownHooks } from "../src/lib/shutdown";
+import { assertLengthAllowed } from "../src/pipeline/limits";
+import { chargeMinutes } from "../src/pipeline/usage";
 import { Dispatcher } from "../src/pipeline/dispatcher";
 import { pickFinalError } from "../src/services/ai/llm";
 import { nextPacificMidnight, nextUtcMidnight, quotaResumeAt } from "../src/services/ai/reset-time";
@@ -31,10 +33,14 @@ import {
   newRunId,
   PIPELINE_TIMING,
   pipelineJobId,
+  planLimitsSchema,
   QUEUES,
   STAGE_NAMES,
   updateSettings,
+  UsageEvent,
+  User,
   Video,
+  videoWasCharged,
   type PipelineJobData,
   type StageName,
 } from "../src/shared";
@@ -114,6 +120,7 @@ async function main() {
   for (const c of await db.listCollections().toArray()) await db.dropCollection(c.name);
   await Video.createCollection();
   await Video.createIndexes();
+  await UsageEvent.createIndexes(); // production has it (`npm run db:indexes`); it is what stops a double charge
   clearSettingsCache();
 
   const queue = createPipelineQueue({ prefix: PREFIX, jobOptions: { backoff: { type: "fixed", delay: 300 } } });
@@ -247,6 +254,39 @@ async function main() {
       assert(pickFinalError([day("gemini"), new AppError("AI_UNAVAILABLE", { details: { provider: "gemini", status: 503 } })], now).code === "AI_UNAVAILABLE", "a busy model among them: plain unavailable (retried), not a wait");
       assert(pickFinalError([big], now).code === "AI_UNAVAILABLE", "too large alone is not a quota problem");
       assert(pickFinalError([day("gemini"), new AppError("INTERNAL", { retryable: false })], now).code === "INTERNAL", "a config error stays visible");
+    });
+
+    await test("minutes: charged exactly once however often a video is retried or re-run; a charged video isn't refused for lack of minutes again, an uncharged one is", async () => {
+      const user = await User.create({ clerkId: "user_ps_minutes", email: "ps-minutes@example.com", quota: { periodStart: new Date(), minutesUsed: 195 } });
+      const id = await newVideo({ userId: user._id, status: "failed" });
+      const limits = planLimitsSchema.parse({ monthlyMinutes: 200 });
+      const tenMinutes = 10 * 60_000;
+
+      const used195 = { quota: { periodStart: new Date(), minutesUsed: 195 } };
+      let code = "";
+      try {
+        assertLengthAllowed(tenMinutes, used195, limits);
+      } catch (e) {
+        code = (e as AppError).code;
+      }
+      assert(code === "QUOTA_EXCEEDED" && !(await videoWasCharged(id)), `uncharged: got "${code}"`);
+
+      const charges = [] as boolean[];
+      for (let i = 0; i < 3; i++) charges.push(await chargeMinutes({ userId: user._id, videoId: id, minutes: 10, provider: "gemini", model: "x" }));
+      assert(charges.join() === "true,false,false" && (await videoWasCharged(id)), `charges ${charges}`);
+      const after = await User.findById(user._id).lean().orFail();
+      assert(after.quota?.minutesUsed === 205, `counter ${after.quota?.minutesUsed}, expected 205 (charged once)`);
+
+      // Now it is in the total (205 of 200): re-running it must not be refused, but it must still fit the plan's length.
+      const used205 = { quota: { periodStart: new Date(), minutesUsed: 205 } };
+      assertLengthAllowed(tenMinutes, used205, limits, new Date(), true);
+      let tooLong = "";
+      try {
+        assertLengthAllowed((limits.maxDurationMin + 1) * 60_000, used205, limits, new Date(), true);
+      } catch (e) {
+        tooLong = (e as AppError).code;
+      }
+      assert(tooLong === "VIDEO_TOO_LONG", `length rule skipped: "${tooLong}"`);
     });
 
     await test("run: retryable error on a non-final attempt → rethrown, video stays processing", async () => {

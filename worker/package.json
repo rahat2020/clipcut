@@ -25,7 +25,10 @@
     "render:smoke": "tsx scripts/render-smoke-test.ts",
     "copy:smoke": "tsx scripts/copy-smoke-test.ts",
     "cleanup:smoke": "tsx scripts/cleanup-smoke-test.ts",
-    "cleanup:run": "tsx scripts/cleanup-run.ts"
+    "cleanup:run": "tsx scripts/cleanup-run.ts",
+    "db:backup": "tsx scripts/db-backup.ts",
+    "db:restore": "tsx scripts/db-restore.ts",
+    "backup:smoke": "tsx scripts/backup-smoke-test.ts"
   },
   "dependencies": {
     "bullmq": "^6.3.9",

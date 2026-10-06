@@ -10,6 +10,7 @@ import mongoose, { Types } from "mongoose";
 
 import { env } from "../src/config/env";
 import { connectDb, disconnectDb } from "../src/lib/db";
+import { assertUniqueIndexes, missingUniqueIndexes } from "../src/lib/indexes";
 import { migrationStatus, runMigrations } from "../src/lib/migrations";
 import {
   ALL_MODELS,
@@ -91,6 +92,22 @@ async function main() {
       await Model.createCollection();
       await Model.createIndexes();
     }
+  });
+
+  await test("indexes: a missing unique index is reported (the worker then refuses to start); present again → none missing", async () => {
+    await mongoose.connection.db!.collection("usage_events").dropIndexes();
+    const missing = await missingUniqueIndexes();
+    assert(missing.length === 1 && /usage_events.*idempotencyKey/.test(missing[0]!), `missing: ${JSON.stringify(missing)}`);
+    let refused = "";
+    try {
+      await assertUniqueIndexes();
+    } catch (err) {
+      refused = err instanceof Error ? err.message : String(err);
+    }
+    assert(/npm run db:indexes/.test(refused), `assertUniqueIndexes: "${refused}"`);
+    await UsageEvent.createIndexes();
+    assert((await missingUniqueIndexes()).length === 0, "still missing after createIndexes");
+    await assertUniqueIndexes();
   });
 
   // ── settings on an empty database ──

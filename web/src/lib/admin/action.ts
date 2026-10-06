@@ -25,7 +25,7 @@ export async function runAdminAction<T>(
 ): Promise<ActionResult<T>> {
   try {
     const admin = await requireAdmin();
-    await assertRateLimit(`admin:${String(admin._id)}`, ACTIONS_PER_MINUTE, 60);
+    await assertRateLimit(`admin:${String(admin._id)}`, ACTIONS_PER_MINUTE, 60, "admin actions");
     const actor = { ...(await auditActorFor(admin)), userId: admin._id };
     return { ok: true, data: await fn({ admin, actor }) };
   } catch (err) {

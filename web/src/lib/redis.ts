@@ -2,9 +2,10 @@ import "server-only";
 
 import { Redis } from "ioredis";
 
-import { AI_CAP_METRICS, aiCapKey, AppError, WORKER_PRESENCE, type AiCapMetric, type WorkerPresence } from "@/shared";
+import { AI_CAP_METRICS, aiCapKey, AppError, BACKUP_TIMING, WORKER_PRESENCE, type AiCapMetric, type LastBackup, type WorkerPresence } from "@/shared";
 
 import { env } from "./env";
+import { consumeRateLimit, RATE_LIMITS, waitText, type RateBucket, type RateResult } from "./rate-limit-core";
 
 /**
  * web/ never touches the job queue (D35). It reads the worker's presence keys and the
@@ -76,6 +77,17 @@ export async function readWorkerStatus(): Promise<WorkerStatus> {
   }
 }
 
+/** The worker's last database backup result (D53), null when none was made yet or Redis can't be reached. */
+export async function readLastBackup(): Promise<{ reachable: boolean; last: LastBackup | null }> {
+  try {
+    const raw = await redis().get(BACKUP_TIMING.lastKey);
+    return { reachable: true, last: raw ? (JSON.parse(raw) as LastBackup) : null };
+  } catch (err) {
+    console.error("[redis] last backup unavailable", err);
+    return { reachable: false, last: null };
+  }
+}
+
 /** Today's AI usage counters (UTC day), or null when Redis can't be reached. */
 export async function readAiUsageToday(now = new Date()): Promise<Record<AiCapMetric, number> | null> {
   try {
@@ -88,20 +100,25 @@ export async function readAiUsageToday(now = new Date()): Promise<Record<AiCapMe
 }
 
 /**
- * Fixed-window rate limit: `limit` calls per `windowSec` per key, else RATE_LIMITED.
- * If Redis is down the call is allowed — admin actions are already behind requireAdmin().
+ * Fixed-window rate limit: `limit` calls per `windowSec` per key, else RATE_LIMITED (with how long to
+ * wait). If Redis is down the call is allowed: availability beats a strict limit, and every route is
+ * already behind sign-in.
  */
-export async function assertRateLimit(key: string, limit: number, windowSec: number): Promise<void> {
-  const window = Math.floor(Date.now() / 1000 / windowSec);
-  const fullKey = `ratelimit:${key}:${window}`;
-  let count: number;
+export async function assertRateLimit(key: string, limit: number, windowSec: number, what = "actions"): Promise<void> {
+  let result: RateResult;
   try {
-    const client = redis();
-    count = await client.incr(fullKey);
-    if (count === 1) await client.expire(fullKey, windowSec + 5);
+    result = await consumeRateLimit(redis(), key, { max: limit, windowSec });
   } catch (err) {
     console.error("[redis] rate limit unavailable", err);
     return;
   }
-  if (count > limit) throw new AppError("RATE_LIMITED", { message: "Too many admin actions. Wait a minute and try again." });
+  if (!result.ok) {
+    throw new AppError("RATE_LIMITED", { message: `Too many ${what}. Try again in ${waitText(result.retryAfterSec)}.`, details: { retryAfterSec: result.retryAfterSec } });
+  }
+}
+
+/** The per-user API limit for one kind of call (table in lib/rate-limit-core.ts). */
+export async function limitUser(user: { _id: unknown }, bucket: RateBucket): Promise<void> {
+  const { max, windowSec } = RATE_LIMITS[bucket];
+  await assertRateLimit(`user:${String(user._id)}:${bucket}`, max, windowSec, "requests");
 }

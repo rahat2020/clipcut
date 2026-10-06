@@ -27,6 +27,11 @@ export function assertUploadAllowed(args: {
   limits: PlanLimits;
   facts: UploadFacts;
   activeJobs: number;
+  /**
+   * This video's minutes were already charged (a Retry): its length still has to fit the plan,
+   * but the minutes-left check is skipped — they're in the user's total already.
+   */
+  alreadyCharged?: boolean;
   now?: Date;
 }): void {
   const { user, limits, facts, activeJobs } = args;
@@ -51,7 +56,7 @@ export function assertUploadAllowed(args: {
 
     const remaining = limits.monthlyMinutes - minutesUsedThisPeriod(user, now);
     const needed = billableMinutes(facts.durationMs);
-    if (needed > remaining) {
+    if (!args.alreadyCharged && needed > remaining) {
       throw new AppError("QUOTA_EXCEEDED", {
         message:
           remaining > 0

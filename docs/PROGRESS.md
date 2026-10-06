@@ -4,7 +4,7 @@ Update this file at the end of every step. Newest status at the top of each sect
 
 ## Current step
 
-**Next: Step 17 — Hardening** (retention cleanup job, retry minutes check, backups, error states), then Step 16 (admin), then Step 18 (deploy) — order agreed with Rahat 2026-10-02. Steps 12–15.6 are done (render D45, clip review D46, Find new clips D47, post text + Banglish D48, covers D49 + v2).
+**Next: Step 18 — Deploy** (Vercel + Hugging Face Spaces; rotate every key first). Steps 16 (admin completion) and 17 (hardening) are done. Steps 12–15.6 are done (render D45, clip review D46, Find new clips D47, post text + Banglish D48, covers D49 + v2).
 Step 8 (small eval set) + Step 11 (prompt iteration) wait until Rahat has the eval videos. UI polish items collect in docs/DESIGN.md ("UI polish backlog").
 
 ## Roadmap
@@ -31,13 +31,40 @@ Step 8 (small eval set) + Step 11 (prompt iteration) wait until Rahat has the ev
 | 15.5 | Clip covers (thumbnails): clean frames + AI cover text + browser editor | ✅ Done 2026-10-02 |
 | 15.6 | Cover v2: 3 AI cover ideas + key word in a 2nd colour, zoom/move, Punch, Baloo Da 2 | ✅ Done 2026-10-03 |
 | 9½ | Admin catch-up: Videos & jobs, AI models, Users (pulled forward) | ✅ Done 2026-09-29 |
-| 16 | Admin panel completion: storage card, limits & plans, retention, system, audit viewer | ⬜ |
-| 17 | Hardening: quotas, cleanup job, backups, error states | 🔄 In progress (17a quota wait ✅, 17b cleanup job ✅) |
+| 16 | Admin panel completion: storage card, limits & plans, retention, system, audit viewer | ✅ Done 2026-10-06 |
+| 17 | Hardening: quotas, cleanup job, backups, error states | ✅ Done 2026-10-06 (Mistral provider left open: needs a working key) |
 | 18 | Deploy: Vercel + Hugging Face Spaces (rotate all keys first) | ⬜ |
 
 ⭐ = the product's core; spend the most time here.
 
 ## Step log
+
+### Step 16 — Admin panel completion ✅ (2026-10-06, D54)
+
+- **Limits & plans** (`/admin/limits`): every plan's limits as a form, add a plan (copy of the default), remove one only
+  when no user is on it; the default plan stays. **Retention** (`/admin/retention`): days per plan, grace hours, purge
+  days; "Review & save" first shows the impact on the real videos (how many are deleted sooner / kept longer, earliest
+  date, users affected, records purged) and a change that deletes sooner needs the new value typed — checked on the
+  server too; list of files going in the next 24 h (overdue ones marked "Due now"). **System** (`/admin/system`):
+  maintenance, uploads, YouTube, sign-ups, processing, worker concurrency, cleanup, backup, render settings; below,
+  read-only database size, collections (documents, size, indexes), migrations and the last backup. **Audit log**
+  (`/admin/audit`): filter by admin, action or group ("video."), record type and id; "Show change" = before/after.
+  **Overview**: Storage & backups cards (MongoDB used / 512 MB, Cloudinary credits / 25, last backup with failed / old
+  warnings) and "N waiting for AI quota". **Video page**: "Files" panel — keep this video's files N more days, or back
+  to the plan's rule. Sidebar: all nine sections are live.
+- Code: `web/src/lib/admin/` settings-service (limits, system, retention preview + save, expiring list, per-video
+  expiry), retention-impact (pure), system-info + system-types, audit-service; server actions in
+  `app/admin/settings/actions.ts`; forms in `components/admin/` (limits, retention, system, expiry, health-cards,
+  form-parts). Shared: `LastBackup` type, `stampRetentionChange` exported, `migrations/status.ts` (the worker's
+  `migrationStatus` moved there so the System page shows the same thing).
+- **Verified:** `admin:smoke` 26/26 (was 14; +12: limits save / plan removal guard, retention preview numbers with and
+  without grace, server-side confirmation, purge confirmation, expiring list, per-video expiry, system save, database
+  facts, backup health, real Cloudinary usage API, audit filters), `db:smoke` 29/29 after the migration move,
+  typecheck + lint clean in both apps, screenshots of the forms at 1280 px (`/dev/admin?view=limits|retention|system|health|impact|expiry`).
+  NOT checked in a browser while signed in (Clerk): the pages' data wiring is covered by the service tests, their
+  layout by the dev previews.
+- Left out on purpose: the "Run cleanup now" button — web/ never talks to the worker (D35); the cleanup runs every
+  30 minutes anyway and the Retention page lists what is due. Per-run cleanup history isn't stored (only logs).
 
 ### Step 17 — Hardening (in progress, started 2026-10-03)
 
@@ -68,8 +95,35 @@ Step 8 (small eval set) + Step 11 (prompt iteration) wait until Rahat has the ev
   count that can lag — now `exists`. Real dry run on Rahat's data: 4 videos have files in Cloudinary,
   all have documents, nothing to delete today; the 3 failed videos from 28–29 Sep expire on 5–6 Oct and
   will be cleaned automatically.
-- Still to do in Step 17: retry-minutes check, MongoDB backup (`npm run db:backup`), rate limits on
-  uploads/API, error-state review. Mistral (needs a working key).
+**17c — Minutes on retry ✅** (D52)
+- The double-charge rule (D33) held: 3 charge attempts for one video → charged once, counter +10 once.
+  The real flaw was the opposite: Retry / re-run ingest re-checked "minutes left" for a video whose minutes
+  were already charged, so a user near the limit couldn't finish a video they had paid for. Fixed with
+  `videoWasCharged` (shared/usage.ts) in `retryVideo` and the worker's `ingest`; the length rule still applies.
+- Also found: the double-charge rule rests on the unique index `usage_events.idempotencyKey`, which production
+  never builds by itself. New `worker/src/lib/indexes.ts`: at boot (production) every unique index must exist or
+  the worker refuses to start ("run npm run db:indexes"). Real database checked: all present.
+- **Verified:** `upload:smoke` 30/30 (+2: rules with alreadyCharged; Retry of a charged vs uncharged video),
+  `pipeline:smoke` 19/19 (+1: charged once however many retries; charged video not refused, length still
+  enforced), `db:smoke` 29/29 (+1: missing unique index reported → worker refuses → fixed), typecheck + lint.
+- **Step 18 checklist additions:** run `npm run db:indexes` + `npm run migrate` on the production database
+  before the first worker start; separate `CLOUDINARY_FOLDER` for production (D51).
+**17d — Backups ✅ · 17e — Rate limits ✅ · 17f — Error states ✅** (D53)
+- Backups: `worker/src/lib/backup.ts`, `backup/storage.ts` + `backup/schedule.ts` (daily, Cloudinary, newest 7),
+  `npm run db:backup` / `db:restore`. **Verified:** `backup:smoke` 5/5 (exact types incl. ObjectId/Date/Bangla/null,
+  empty collection, restore safety, damaged files refused before writing, real Cloudinary upload → list →
+  byte-identical download → restore → delete, oversize refused); on Rahat's real database: 87 documents backed
+  up, restored into a temporary database, **all 87 compared identical**, temporary database dropped. Found by
+  testing: Cloudinary refuses normal delivery of .gz (401) → API-signed download link. NOT uploaded to
+  Cloudinary yet: Rahat's real data goes there only when the worker runs (needs his OK of the design).
+- Rate limits: `web/src/lib/rate-limit-core.ts` (table + counter, testable) and `limitUser` in every API route
+  (13 routes). `review:smoke` 16/16 (+1: window, refusal with wait time, fresh window, another user).
+- Error states: `app/error.tsx`, `(app)/error.tsx`, `global-error.tsx`, `not-found.tsx` + `ErrorCard`; dev preview
+  `/dev/crash`; screenshots checked. Error-message audit: four messages now say what to do next.
+- **Open (not blocking):** Mistral as an extra AI provider — the key given answered 401.
+- **Deploy checklist so far (Step 18):** `npm run db:indexes` + `npm run migrate` on the production DB before the
+  first worker start (D52); production `CLOUDINARY_FOLDER` ≠ dev (D51); check `backup:last` after day one;
+  Cloudinary's 10 MB raw limit vs backup size (D53); rotate every key.
 
 ### Step 15.6 — Cover v2 ✅ (2026-10-03)
 

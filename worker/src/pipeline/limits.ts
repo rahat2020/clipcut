@@ -27,12 +27,14 @@ export async function limitsFor(video: RunVideo): Promise<{ user: RunUser; limit
  * The same length and minutes-left rules as upload, applied to the real length. For
  * YouTube this is the first time we know it; for uploads it re-checks Cloudinary's number.
  */
-export function assertLengthAllowed(durationMs: number, user: RunUser, limits: PlanLimits, now = new Date()): void {
+export function assertLengthAllowed(durationMs: number, user: RunUser, limits: PlanLimits, now = new Date(), alreadyCharged = false): void {
   if (durationMs > limits.maxDurationMin * 60_000) {
     throw new AppError("VIDEO_TOO_LONG", {
       message: `This video is longer than ${limits.maxDurationMin} minutes, the most your plan allows.`,
     });
   }
+  // Its minutes are already in the user's total (and can't be charged again): don't count them twice.
+  if (alreadyCharged) return;
   const remaining = limits.monthlyMinutes - minutesUsedThisPeriod(user, now);
   const needed = billableMinutes(durationMs);
   if (needed > remaining) {

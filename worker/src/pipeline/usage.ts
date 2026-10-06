@@ -3,6 +3,7 @@ import type { Types } from "mongoose";
 import {
   currentQuotaPeriodStart,
   isDuplicateKeyError,
+  transcribeChargeKey,
   User,
   UsageEvent,
 } from "../shared";
@@ -37,7 +38,7 @@ export async function chargeMinutes(args: {
       unit: "minutes",
       provider: args.provider,
       model: args.model,
-      idempotencyKey: `video:${String(args.videoId)}:transcribe`,
+      idempotencyKey: transcribeChargeKey(args.videoId),
       at: now,
     });
   } catch (err) {

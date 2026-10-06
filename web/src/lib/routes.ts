@@ -12,6 +12,10 @@ export const ROUTES = {
   adminUsers: "/admin/users",
   adminAi: "/admin/ai",
   adminAccuracy: "/admin/accuracy",
+  adminLimits: "/admin/limits",
+  adminRetention: "/admin/retention",
+  adminSystem: "/admin/system",
+  adminAudit: "/admin/audit",
   /** Shown instead of the app when the account can't use it (suspended, maintenance, sign-ups closed). */
   blocked: "/blocked",
 } as const;

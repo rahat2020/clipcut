@@ -173,6 +173,8 @@ export const systemSettingsSchema = z.object({
   signupsEnabled: z.boolean().default(true),
   /** The cleanup job (Step 17): deletes expired / abandoned files. Off = nothing is deleted by the worker. */
   cleanupEnabled: z.boolean().default(true),
+  /** The daily database backup to Cloudinary (Step 17, D53). Off = the worker makes none. */
+  backupEnabled: z.boolean().default(true),
   /** Clip rendering (Step 12). */
   render: z
     .object({

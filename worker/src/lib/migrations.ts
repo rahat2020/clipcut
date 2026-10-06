@@ -3,40 +3,21 @@ import os from "node:os";
 import type mongoose from "mongoose";
 
 import { MIGRATIONS } from "../shared/migrations";
+import { migrationStatus, MIGRATIONS_COLLECTION as COLLECTION, MIGRATIONS_LOCK_ID as LOCK_ID, type MigrationRecord } from "../shared/migrations/status";
 
 /**
  * Applies pending migrations in order and records each in `_migrations`
  * (docs/SCHEMA.md §6.4). A lock document stops two runs from overlapping.
+ * `migrationStatus` lives in shared/ — the admin System page shows the same thing.
  */
 
-type Db = mongoose.mongo.Db;
-type MigrationRecord = { _id: string; description?: string; appliedAt?: Date; durationMs?: number; at?: Date; by?: string };
+export { migrationStatus };
+export type { MigrationStatus } from "../shared/migrations/status";
 
-const COLLECTION = "_migrations";
-const LOCK_ID = "__lock";
+type Db = mongoose.mongo.Db;
+
 /** A lock older than this is assumed to be from a crashed run and is taken over. */
 const STALE_LOCK_MS = 15 * 60 * 1000;
-
-export type MigrationStatus = {
-  applied: { id: string; appliedAt: Date }[];
-  pending: { id: string; description: string }[];
-  /** In the database but not in code — someone deleted or renamed a migration. */
-  unknown: string[];
-};
-
-export async function migrationStatus(db: Db): Promise<MigrationStatus> {
-  const records = await db
-    .collection<MigrationRecord>(COLLECTION)
-    .find({ _id: { $ne: LOCK_ID } })
-    .toArray();
-  const appliedIds = new Map(records.map((r) => [r._id, r.appliedAt ?? new Date(0)]));
-  const known = new Set(MIGRATIONS.map((m) => m.id));
-  return {
-    applied: MIGRATIONS.filter((m) => appliedIds.has(m.id)).map((m) => ({ id: m.id, appliedAt: appliedIds.get(m.id)! })),
-    pending: MIGRATIONS.filter((m) => !appliedIds.has(m.id)).map((m) => ({ id: m.id, description: m.description })),
-    unknown: [...appliedIds.keys()].filter((id) => !known.has(id)),
-  };
-}
 
 async function acquireLock(db: Db, owner: string): Promise<void> {
   const col = db.collection<MigrationRecord>(COLLECTION);
