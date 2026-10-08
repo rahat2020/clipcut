@@ -15,7 +15,58 @@ export const POST_COPY = {
   coverTextMaxChars: 40,
   maxCoverOptions: 3,
   maxHashtags: 8,
+  /** Words shown in the caption's second colour (copy@4): the names, numbers and key words of the clip. */
+  maxEmphasisWords: 6,
 } as const;
+
+/**
+ * A spoken word reduced for matching caption emphasis: no punctuation, lower case, NFC
+ * ("গোল!" → "গোল", "Messi," → "messi"). Empty for punctuation-only tokens.
+ */
+export function emphasisToken(word: string): string {
+  return word.normalize("NFC").replace(/[^\p{L}\p{M}\p{N}]/gu, "").toLowerCase();
+}
+
+/**
+ * Too short to stand out: under 3 characters and no digit. Drops the little words the AI sometimes
+ * picks ("না", "এই", "আর" — seen 2026-10-08), which would colour half the captions.
+ */
+function isUsableEmphasis(token: string): boolean {
+  return [...token].length >= 3 || /\p{N}/u.test(token);
+}
+
+/**
+ * Does this caption word carry one of the emphasis tokens? Exact match, or the word starts
+ * with a token of 3+ letters — Bangla adds endings ("ফাহান" → "ফাহানের", "গোল" → "গোলটা").
+ */
+export function isEmphasisWord(word: string, tokens: ReadonlySet<string>): boolean {
+  const t = emphasisToken(word);
+  if (!t) return false;
+  if (tokens.has(t) && isUsableEmphasis(t)) return true;
+  for (const k of tokens) if ([...k].length >= 3 && t.startsWith(k)) return true;
+  return false;
+}
+
+/**
+ * The AI's emphasis words, cleaned: split into single words, only words really said in the clip
+ * (an invented word would never match a caption anyway), no short little words, no repeats, at most `maxEmphasisWords`.
+ * Sorted, so the same choice always gives the same render spec.
+ */
+export function cleanEmphasis(raw: readonly string[], said: string): string[] {
+  const spoken = said.split(/\s+/).map(emphasisToken).filter(Boolean);
+  const spokenSet = new Set(spoken);
+  const out: string[] = [];
+  for (const phrase of raw) {
+    for (const w of phrase.split(/\s+/)) {
+      const t = emphasisToken(w);
+      if (!t || !isUsableEmphasis(t) || out.includes(t)) continue;
+      if (!spokenSet.has(t) && !([...t].length >= 3 && spoken.some((s) => s.startsWith(t)))) continue;
+      out.push(t);
+      if (out.length >= POST_COPY.maxEmphasisWords) return out.sort();
+    }
+  }
+  return out.sort();
+}
 
 /**
  * "#Bangladesh football!" → "#Bangladeshfootball". Keeps letters (any script, with their

@@ -32,6 +32,8 @@ export const clipUpdateSchema = z
     endMs: z.number().int().min(0).optional(),
     cropOffsetX: z.number().min(-1).max(1).optional(),
     captionStyleId: z.string().refine((id) => id in CAPTION_STYLES, "unknown caption style").optional(),
+    /** Auto zoom on or off for this clip (render@3). */
+    autoZoom: z.boolean().optional(),
     /** The post text as the user edited it (all four fields together). */
     copy: z
       .object({
@@ -69,7 +71,7 @@ export async function updateClip(ctx: { user: EditUser; now?: Date }, clipId: st
     else unset.feedback = 1;
   }
 
-  const changesPixels = input.startMs !== undefined || input.cropOffsetX !== undefined || input.captionStyleId !== undefined;
+  const changesPixels = input.startMs !== undefined || input.cropOffsetX !== undefined || input.captionStyleId !== undefined || input.autoZoom !== undefined;
   if (changesPixels && video.retention?.assetsDeletedAt) throw new AppError("MEDIA_EXPIRED");
 
   if (input.startMs !== undefined && input.endMs !== undefined) {
@@ -95,6 +97,7 @@ export async function updateClip(ctx: { user: EditUser; now?: Date }, clipId: st
   }
   if (input.cropOffsetX !== undefined) set["edit.cropOffsetX"] = Math.round(input.cropOffsetX * 100) / 100;
   if (input.captionStyleId !== undefined) set["edit.captionStyleId"] = input.captionStyleId;
+  if (input.autoZoom !== undefined) set["edit.autoZoom"] = input.autoZoom;
   if (input.copy) {
     set["copy.title"] = oneLineText(input.copy.title, POST_COPY.titleMaxChars);
     set["copy.hook"] = oneLineText(input.copy.hook, POST_COPY.hookMaxChars);

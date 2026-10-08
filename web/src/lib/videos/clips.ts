@@ -22,6 +22,8 @@ export type ClipView = {
   /** -1 … 1 (Step 13 framing). */
   cropOffsetX: number;
   captionStyleId: string;
+  /** Auto zoom (render@3); on unless the user turned it off. */
+  autoZoom: boolean;
   /** The AI's cut before the user trimmed it; null when never trimmed. */
   ai: { startMs: number; endMs: number } | null;
   /** Approved in an earlier set and kept when new clips were found (Step 14). */
@@ -94,6 +96,7 @@ export async function loadClips(
       rejectReason: c.status === "rejected" ? (c.feedback?.reason ?? null) : null,
       cropOffsetX: c.edit?.cropOffsetX ?? 0,
       captionStyleId: captionStyle(c.edit?.captionStyleId).id,
+      autoZoom: c.edit?.autoZoom !== false,
       ai: c.edit?.aiStartMs != null && c.edit.aiEndMs != null ? { startMs: c.edit.aiStartMs, endMs: c.edit.aiEndMs } : null,
       kept: !isCurrent(c),
       copy: c.copy?.title

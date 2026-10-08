@@ -50,6 +50,7 @@ export default async function WorkspacePreview({ searchParams }: PageProps<"/dev
         rejectReason: i === 3 ? "Boring" : null,
         cropOffsetX: 0,
         captionStyleId: "preset:bold",
+        autoZoom: true,
         ai: null,
         kept: false,
         copy:

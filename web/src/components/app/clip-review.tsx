@@ -37,6 +37,7 @@ type ClipPatch = {
   endMs?: number;
   cropOffsetX?: number;
   captionStyleId?: string;
+  autoZoom?: boolean;
 };
 
 async function patchClip(clipId: string, body: ClipPatch): Promise<void> {
@@ -179,6 +180,7 @@ type Draft = {
   endMs: number;
   cropOffsetX: number;
   captionStyleId: string;
+  autoZoom: boolean;
 };
 type EditTab = "trim" | "framing" | "captions";
 
@@ -195,8 +197,11 @@ const FRAMING_PRESETS = [
 ] as const;
 
 const CAPTION_NOTES: Record<string, string> = {
-  "preset:bold": "Big white words with a black outline.",
-  "preset:clean": "Smaller words on a soft dark box.",
+  "preset:bold": "Big white words with a black outline. Key words in yellow; the first line pops in bigger.",
+  "preset:clean": "Smaller words on a soft dark box. Key words in yellow.",
+  "preset:pop": "Large words, three at a time. Key words in green; the first line pops in bigger.",
+  "preset:fire": "Yellow words with key words in red; the first line pops in bigger.",
+  "preset:minimal": "Small, quiet captions. No colours, no animation.",
 };
 
 const segment = (on: boolean) =>
@@ -284,7 +289,7 @@ export function ClipEditToolbar({
       ) : (
         <ClipEditor
           // A save refreshes the clip from the server; the editor then starts from what was stored.
-          key={`${clip.id}:${clip.startMs}:${clip.endMs}:${clip.cropOffsetX}:${clip.captionStyleId}`}
+          key={`${clip.id}:${clip.startMs}:${clip.endMs}:${clip.cropOffsetX}:${clip.captionStyleId}:${clip.autoZoom}`}
           clip={clip}
           tab={tab}
           videoId={videoId}
@@ -326,6 +331,7 @@ function ClipEditor({
     endMs: clip.endMs,
     cropOffsetX: clip.cropOffsetX,
     captionStyleId: clip.captionStyleId,
+    autoZoom: clip.autoZoom,
   };
   const [draft, setDraft] = useState<Draft>(saved);
 
@@ -334,7 +340,8 @@ function ClipEditor({
   const dirty =
     rangeChanged ||
     draft.cropOffsetX !== saved.cropOffsetX ||
-    draft.captionStyleId !== saved.captionStyleId;
+    draft.captionStyleId !== saved.captionStyleId ||
+    draft.autoZoom !== saved.autoZoom;
   const ai = clip.ai ?? { startMs: clip.startMs, endMs: clip.endMs };
   const atAiCut = draft.startMs === ai.startMs && draft.endMs === ai.endMs;
   const len = draft.endMs - draft.startMs;
@@ -357,6 +364,7 @@ function ClipEditor({
         body.cropOffsetX = draft.cropOffsetX;
       if (draft.captionStyleId !== saved.captionStyleId)
         body.captionStyleId = draft.captionStyleId;
+      if (draft.autoZoom !== saved.autoZoom) body.autoZoom = draft.autoZoom;
       await patchClip(clip.id, body);
       return render ? postRender(clip.id) : null;
     },
@@ -518,6 +526,26 @@ function ClipEditor({
           <span className="text-xs text-subtle">
             {CAPTION_NOTES[draft.captionStyleId] ?? ""}
           </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex w-fit gap-1 rounded-[10px] border bg-background p-1">
+              {([true, false] as const).map((on) => (
+                <button
+                  key={String(on)}
+                  type="button"
+                  aria-pressed={draft.autoZoom === on}
+                  onClick={() => setDraft((d) => ({ ...d, autoZoom: on }))}
+                  className={segment(draft.autoZoom === on)}
+                >
+                  {on ? "Auto zoom" : "No zoom"}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-subtle">
+              {draft.autoZoom
+                ? "A quick punch-in at the start and a slow push on key lines."
+                : "The frame stays still."}
+            </span>
+          </div>
         </div>
       )}
 

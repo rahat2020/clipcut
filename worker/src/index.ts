@@ -9,7 +9,7 @@ import { logger } from "./lib/logger";
 import { assertUniqueIndexes } from "./lib/indexes";
 import { every } from "./lib/loop";
 import { clearPresence, publishPresence, WORKER_ID } from "./lib/presence";
-import { bullConnection } from "./lib/redis";
+import { bullConnection, isConnectionDrop } from "./lib/redis";
 import { onShutdown, runShutdownHooks } from "./lib/shutdown";
 import { scheduledBackup } from "./backup/schedule";
 import { scheduledCleanup } from "./cleanup/schedule";
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     (job) => processPipelineJob(job, { scratchRoot: JOBS_DIR }),
     { connection: bullConnection(), concurrency },
   );
-  worker.on("error", (err) => logger.error({ err }, "queue worker error"));
+  worker.on("error", (err) => (isConnectionDrop(err) ? logger.warn({ code: (err as { code?: string }).code }, "queue worker: Redis connection dropped — reconnecting") : logger.error({ err }, "queue worker error")));
   let inFlight = 0;
   worker.on("active", () => void inFlight++);
   worker.on("completed", () => void inFlight--);
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     connection: bullConnection(),
     concurrency: 1,
   });
-  renderWorker.on("error", (err) => logger.error({ err }, "render worker error"));
+  renderWorker.on("error", (err) => (isConnectionDrop(err) ? logger.warn({ code: (err as { code?: string }).code }, "render worker: Redis connection dropped — reconnecting") : logger.error({ err }, "render worker error")));
   onShutdown(() => renderWorker.close());
   await renderWorker.waitUntilReady();
   const renderDispatcher = new RenderDispatcher(renderQueue);

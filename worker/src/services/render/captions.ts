@@ -1,5 +1,5 @@
 import type { Word } from "../clips/lines";
-import type { CaptionStyle } from "../../shared";
+import { CAPTION_LOOK, isEmphasisWord, type CaptionStyle } from "../../shared";
 
 /**
  * Burned-in captions as an ASS subtitle file (rendered by ffmpeg's `ass` filter with
@@ -9,7 +9,9 @@ import type { CaptionStyle } from "../../shared";
  * look: a phrase closes at a sentence end, a pause, or when it gets too long. Times are
  * relative to the clip start, because the encoder seeks the input to the clip start.
  *
- * Bangla word times are estimates (D42) — phrases, not single words, keep that invisible.
+ * Bangla word times are estimates (D42) — phrases, not single words, keep that invisible. For
+ * the same reason key words are coloured for their whole phrase, never lit word by word
+ * (measured 2026-10-07: the right word would be lit only ~36 % of the time).
  */
 
 export const CAPTION_RULES = {
@@ -23,7 +25,29 @@ export const CAPTION_RULES = {
   minMs: 700,
 };
 
-export type Phrase = { startMs: number; endMs: number; text: string };
+/** A word with its emphasis flag (4th item) — captions colour it when the style has a highlight colour. */
+export type CaptionWord = readonly [number, number, string, boolean?];
+
+export type Phrase = { startMs: number; endMs: number; text: string; words: { text: string; emphasis: boolean }[] };
+
+/** A word's identity across scripts: its times (the same key `latnWords` uses, D48). */
+const wordKey = (w: { 0: number; 1: number }) => `${w[0]}_${w[1]}`;
+
+/**
+ * Which of the clip's words are emphasised — decided on the ORIGINAL words (before a switch to
+ * Banglish, which keeps the times): those matching the clip's emphasis tokens; with no tokens
+ * (clips written before copy@4), the numbers.
+ */
+export function emphasisKeys(words: readonly Word[], spec: { startMs: number; endMs: number; emphasis?: readonly string[] | null }): Set<string> {
+  const tokens = new Set(spec.emphasis ?? []);
+  const keys = new Set<string>();
+  for (const w of words) {
+    const mid = (w[0] + w[1]) / 2;
+    if (mid < spec.startMs || mid > spec.endMs) continue;
+    if (tokens.size > 0 ? isEmphasisWord(w[2], tokens) : /[0-9০-৯]/u.test(w[2])) keys.add(wordKey(w));
+  }
+  return keys;
+}
 
 const SENTENCE_END = /[।॥?!.…]["'”’)]*$/u;
 /** Punctuation dropped at the end of a caption word — captions read cleaner without it. */
@@ -36,15 +60,19 @@ function length(text: string): number {
   return n;
 }
 
-/** The clip's words, with times relative to the clip start. A word belongs to the clip if its middle falls inside. */
-export function clipWords(words: readonly Word[], startMs: number, endMs: number): Word[] {
-  const out: Word[] = [];
-  for (const [s, e, text] of words) {
+/**
+ * The clip's words, with times relative to the clip start. A word belongs to the clip if its
+ * middle falls inside. `emphasis` = keys from `emphasisKeys` (absolute times).
+ */
+export function clipWords(words: readonly Word[], startMs: number, endMs: number, emphasis?: ReadonlySet<string>): CaptionWord[] {
+  const out: CaptionWord[] = [];
+  for (const w of words) {
+    const [s, e, text] = w;
     const mid = (s + e) / 2;
     if (mid < startMs || mid > endMs) continue;
     const t = text.trim();
     if (!t) continue;
-    out.push([Math.max(s - startMs, 0), Math.min(e, endMs) - startMs, t]);
+    out.push([Math.max(s - startMs, 0), Math.min(e, endMs) - startMs, t, emphasis?.has(wordKey(w)) ?? false]);
   }
   return out;
 }
@@ -70,9 +98,9 @@ export function wordsFromSegments(segments: readonly { startMs: number; endMs: n
   return out;
 }
 
-export function buildPhrases(words: readonly Word[], style: Pick<CaptionStyle, "maxChars" | "maxWords">, clipMs: number, rules = CAPTION_RULES): Phrase[] {
-  const groups: Word[][] = [];
-  let current: Word[] = [];
+export function buildPhrases(words: readonly CaptionWord[], style: Pick<CaptionStyle, "maxChars" | "maxWords">, clipMs: number, rules = CAPTION_RULES): Phrase[] {
+  const groups: CaptionWord[][] = [];
+  let current: CaptionWord[] = [];
   let chars = 0;
   for (const [i, w] of words.entries()) {
     const text = w[2];
@@ -95,15 +123,13 @@ export function buildPhrases(words: readonly Word[], style: Pick<CaptionStyle, "
 
   const phrases: Phrase[] = [];
   for (const [i, g] of groups.entries()) {
-    const text = g
-      .map((w) => w[2].replace(TRAILING, ""))
-      .filter(Boolean)
-      .join(" ");
+    const parts = g.map((w) => ({ text: w[2].replace(TRAILING, ""), emphasis: w[3] === true })).filter((w) => w.text);
+    const text = parts.map((w) => w.text).join(" ");
     if (!text) continue;
     const start = g[0]![0];
     const nextStart = groups[i + 1]?.[0]?.[0] ?? clipMs;
     const end = Math.min(Math.max(g.at(-1)![1] + rules.holdMs, start + rules.minMs), nextStart, clipMs);
-    if (end > start) phrases.push({ startMs: start, endMs: end, text });
+    if (end > start) phrases.push({ startMs: start, endMs: end, text, words: parts });
   }
   return phrases;
 }
@@ -116,6 +142,11 @@ function assTime(ms: number): string {
   const s = Math.floor((cs % 6_000) / 100);
   const c = cs % 100;
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(c).padStart(2, "0")}`;
+}
+
+/** Style colour "&HAABBGGRR" → override-tag colour "&HBBGGRR&". */
+function overrideColour(colour: string): string {
+  return `&H${colour.replace(/^&H/i, "").slice(-6)}&`;
 }
 
 /** User speech must never become ASS markup: `{…}` is an override block, `\` starts a tag. */
@@ -154,7 +185,14 @@ export function buildAss(phrases: readonly Phrase[], style: CaptionStyle, size: 
     1,
   ].join(",");
   const pop = style.pop ? "{\\fscx88\\fscy88\\t(0,90,\\fscx100\\fscy100)}" : "";
-  const events = phrases.map((p) => `Dialogue: 0,${assTime(p.startMs)},${assTime(p.endMs)},Caption,,0,0,0,,${pop}${escapeText(p.text)}`);
+  // The hook: bigger letters that bounce in (overshoot, then settle).
+  const hook = `{\\fs${Math.round(fontSize * CAPTION_LOOK.hookScale)}\\fscx70\\fscy70\\t(0,110,\\fscx112\\fscy112)\\t(110,200,\\fscx100\\fscy100)}`;
+  const isHook = (p: Phrase, i: number) => style.hook && i < CAPTION_LOOK.hookMaxPhrases && p.startMs < CAPTION_LOOK.hookMs;
+  // Key words switch to the highlight colour and back (colour only: a size change would cut the pop animation).
+  const on = style.highlightColour ? `{\\1c${overrideColour(style.highlightColour)}}` : "";
+  const off = `{\\1c${overrideColour(style.primaryColour)}}`;
+  const body = (p: Phrase) => p.words.map((w) => (on && w.emphasis ? `${on}${escapeText(w.text)}${off}` : escapeText(w.text))).join(" ");
+  const events = phrases.map((p, i) => `Dialogue: 0,${assTime(p.startMs)},${assTime(p.endMs)},Caption,,0,0,0,,${isHook(p, i) ? hook : pop}${body(p)}`);
 
   return [
     "[Script Info]",

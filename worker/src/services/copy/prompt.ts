@@ -62,8 +62,13 @@ const COVER_LINES: Record<CoverAsk, string> = {
 const buildV1 = (input: CopyInput) => build(input, "none");
 const buildV2 = (input: CopyInput) => build(input, "text");
 const buildV3 = (input: CopyInput) => build(input, "options");
+/** copy@4 (2026-10-07): copy@3 + the clip's key words for the caption's second colour and auto zoom — same request. */
+const buildV4 = (input: CopyInput) => build(input, "options", true);
 
-function build(input: CopyInput, cover: CoverAsk): CopyPrompt {
+const EMPHASIS_LINE =
+  '- emphasis: 3 to 6 key words of the clip, each ONE word copied exactly as it is written in «Said» (same letters and spelling): names, numbers, and the words that carry the moment. They are shown in a second colour in the captions, so never common words like "and", "this", "আর", "এই".\n';
+
+function build(input: CopyInput, cover: CoverAsk, emphasis = false): CopyPrompt {
   const key = input.language === "en" ? "en" : input.script === "Latn" ? "bn-Latn" : "bn-Beng";
   const clips = input.clips
     .map(
@@ -81,14 +86,15 @@ For EVERY clip below write:
 - hook: one short sentence, at most 100 characters, for the first line of the post — a question, a striking line from the clip, or its surprise — so people stop scrolling.
 - description: one or two sentences, at most 250 characters, saying what happens in the clip.
 - hashtags: 3 to 6 tags specific to this clip (topic, people, team, place), at most one broad tag. No spaces inside a tag.
-${COVER_LINES[cover]}Each clip's text must stand on its own; don't repeat the same title for two clips.
+${COVER_LINES[cover]}${emphasis ? EMPHASIS_LINE : ""}Each clip's text must stand on its own; don't repeat the same title for two clips.
 
 ${clips}`;
-  return { system: SYSTEM_V1, prompt, schema: cover === "options" ? COPY_SCHEMA_V3 : cover === "text" ? COPY_SCHEMA_V2 : COPY_SCHEMA };
+  const schema = emphasis ? COPY_SCHEMA_V4 : cover === "options" ? COPY_SCHEMA_V3 : cover === "text" ? COPY_SCHEMA_V2 : COPY_SCHEMA;
+  return { system: SYSTEM_V1, prompt, schema };
 }
 
-const PROMPTS: Record<string, (input: CopyInput) => CopyPrompt> = { "copy@1": buildV1, "copy@2": buildV2, "copy@3": buildV3 };
-export const LATEST_COPY_PROMPT = "copy@3";
+const PROMPTS: Record<string, (input: CopyInput) => CopyPrompt> = { "copy@1": buildV1, "copy@2": buildV2, "copy@3": buildV3, "copy@4": buildV4 };
+export const LATEST_COPY_PROMPT = "copy@4";
 
 export function buildCopyPrompt(version: string, input: CopyInput): { version: string; prompt: CopyPrompt } {
   const known = PROMPTS[version] ? version : LATEST_COPY_PROMPT;
@@ -178,6 +184,40 @@ export const COPY_SCHEMA_V3: JsonSchema = {
   additionalProperties: false,
 };
 
+/** copy@4: copy@3 plus `emphasis` (the clip's key words for the captions). */
+export const COPY_SCHEMA_V4: JsonSchema = {
+  type: "object",
+  properties: {
+    clips: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          clip: { type: "integer" },
+          title: { type: "string" },
+          hook: { type: "string" },
+          description: { type: "string" },
+          hashtags: { type: "array", items: { type: "string" } },
+          cover_options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { text: { type: "string" }, highlight: { type: "string" } },
+              required: ["text", "highlight"],
+              additionalProperties: false,
+            },
+          },
+          emphasis: { type: "array", items: { type: "string" } },
+        },
+        required: ["clip", "title", "hook", "description", "hashtags", "cover_options", "emphasis"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["clips"],
+  additionalProperties: false,
+};
+
 const coverOptionSchema = z.object({ text: z.string(), highlight: z.string().catch("") });
 
 const itemSchema = z.object({
@@ -188,10 +228,20 @@ const itemSchema = z.object({
   hashtags: z.array(z.string()).catch([]),
   cover_text: z.string().catch(""),
   cover_options: z.array(z.unknown()).catch([]),
+  emphasis: z.array(z.string()).catch([]),
 });
 
 export type CoverOption = { text: string; highlight: string };
-export type PostCopy = { title: string; hook: string; description: string; hashtags: string[]; coverText: string; coverOptions: CoverOption[] };
+export type PostCopy = {
+  title: string;
+  hook: string;
+  description: string;
+  hashtags: string[];
+  coverText: string;
+  coverOptions: CoverOption[];
+  /** The AI's key words as given (copy@4); the stage keeps only words really said in the clip (`cleanEmphasis`). */
+  emphasis: string[];
+};
 
 /** Cleaned cover ideas: one line within the limit, no repeats, a highlight that is really in the text. */
 function cleanCoverOptions(raw: readonly unknown[]): CoverOption[] {
@@ -234,6 +284,7 @@ export function parseCopy(text: string): Map<number, PostCopy> {
       hashtags: normalizeHashtags(p.data.hashtags),
       coverText: oneLineText(p.data.cover_text, POST_COPY.coverTextMaxChars) || (coverOptions[0]?.text ?? ""),
       coverOptions,
+      emphasis: p.data.emphasis.slice(0, 20),
     });
   }
   return out;

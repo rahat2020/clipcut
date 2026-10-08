@@ -88,7 +88,7 @@ const ROW_FIELDS = { clipId: 1, status: 1, specHash: 1, progress: 1, error: 1, o
 export async function loadRenderViews(cfg: CloudinaryConfig, video: VideoForRenders): Promise<RenderView[]> {
   if (!video.currentAnalysisRunId) return [];
   const clips = await Clip.find({ ...visibleClipsFilter(video), userId: video.userId, latestRenderId: { $ne: null } })
-    .select({ latestRenderId: 1, startMs: 1, endMs: 1, edit: 1 })
+    .select({ latestRenderId: 1, startMs: 1, endMs: 1, edit: 1, "copy.emphasis": 1 })
     .lean();
   const ids = clips.map((c) => c.latestRenderId).filter((id): id is Types.ObjectId => !!id);
   if (ids.length === 0) return [];
@@ -123,7 +123,7 @@ export async function loadRenderViewsForUser(cfg: CloudinaryConfig, user: Render
 export async function requestRender(ctx: { cfg: CloudinaryConfig; user: RenderUser; now?: Date }, clipId: string): Promise<RenderView> {
   const now = ctx.now ?? new Date();
   const clip = await Clip.findOne({ _id: clipId, ...ownedBy(ctx.user), deletedAt: null })
-    .select({ videoId: 1, analysisRunId: 1, keptAt: 1, startMs: 1, endMs: 1, edit: 1 })
+    .select({ videoId: 1, analysisRunId: 1, keptAt: 1, startMs: 1, endMs: 1, edit: 1, "copy.emphasis": 1 })
     .lean();
   if (!clip) throw new AppError("NOT_FOUND");
   const video = await Video.findOne({ _id: clip.videoId, ...ownedBy(ctx.user), deletedAt: null })

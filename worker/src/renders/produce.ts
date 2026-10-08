@@ -8,6 +8,7 @@ import { ToolError } from "../lib/exec";
 import type { Word } from "../services/clips/lines";
 import { buildAss, buildPhrases, clipWords, wordsFromSegments } from "../services/render/captions";
 import { encodeClip, extractCoverFrames, prepareFonts } from "../services/render/encode";
+import { zoomPlan } from "../services/render/zoom";
 import { probeMedia } from "../services/media/ffprobe";
 import { coverFramePublicId, readPrivateJson, renderPublicId, uploadPrivateImage, uploadPrivateVideo } from "../services/storage/cloudinary";
 import {
@@ -56,7 +57,10 @@ export async function produceRender(args: {
   video: { _id: Types.ObjectId; userId: Types.ObjectId };
   clipId: Types.ObjectId;
   spec: RenderSpec;
+  /** Caption words — already in Banglish when the spec asks for it. */
   words: readonly Word[];
+  /** Emphasised words (`emphasisKeys` on the ORIGINAL words, before any switch to Banglish). */
+  emphasis?: ReadonlySet<string>;
   /** The source file and where it starts in the original video (a downloaded section starts later). */
   input: { file: string; startMs: number; fps: number | null; hasAudio: boolean };
   workDir: string;
@@ -76,7 +80,9 @@ export async function produceRender(args: {
   const { render: cfg } = await getSettings("system");
 
   await prepareFonts(workDir);
-  const phrases = spec.burnCaptions ? buildPhrases(clipWords(args.words, spec.startMs, spec.endMs), style, durationMs) : [];
+  const phrases = spec.burnCaptions ? buildPhrases(clipWords(args.words, spec.startMs, spec.endMs, args.emphasis), style, durationMs) : [];
+  // Renders made before render@3 have no autoZoom in their spec: keep them as they were.
+  const zoom = spec.autoZoom ? zoomPlan(phrases, durationMs) : null;
   if (phrases.length > 0) await writeFile(path.join(workDir, assName), buildAss(phrases, style, spec), "utf8");
 
   try {
@@ -97,6 +103,7 @@ export async function produceRender(args: {
         requireAudio: args.input.hasAudio,
         crf: cfg.crf,
         preset: cfg.preset,
+        zoom,
         signal: args.signal,
         onProgress: (f) => report(0.1 + f * 0.75),
       });
@@ -122,7 +129,10 @@ export async function produceRender(args: {
     }
     const covers = await makeCoverFrames(args, publicId, log);
     await handle.finish({ publicId, ...uploaded }, encodeMs, covers);
-    log.info({ renderId: handle.id, clipId: String(args.clipId), encodeMs, bytes: uploaded.bytes, phrases: phrases.length }, "clip rendered");
+    log.info(
+      { renderId: handle.id, clipId: String(args.clipId), encodeMs, bytes: uploaded.bytes, phrases: phrases.length, emphasised: args.emphasis?.size ?? 0, zooms: zoom?.length ?? null },
+      "clip rendered",
+    );
 
     await Promise.all([
       Clip.updateOne({ _id: args.clipId }, { $set: { "signals.rendered": true, latestRenderId: handle._id } }),

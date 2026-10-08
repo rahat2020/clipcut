@@ -6,7 +6,7 @@
  */
 export const PROMPT_VERSIONS = {
   clipSelection: ["clip-select@1"],
-  copyWriting: ["copy@1", "copy@2", "copy@3"],
+  copyWriting: ["copy@1", "copy@2", "copy@3", "copy@4"],
   /** Banglish captions (Step 15); not a setting — changes with the code, like snapping rules. */
   transliteration: ["banglish@1"],
 } as const;

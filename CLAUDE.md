@@ -142,8 +142,8 @@ npm run pipeline:smoke     19 queue/pipeline checks incl. AI-quota wait + charge
 npm run media:smoke        11 ingest/audio checks (real ffmpeg, yt-dlp, Cloudinary smoketest/)
 npm run transcribe:smoke   15 checks: transcription, Gemini pieces + Whisper fallback, charging (real Groq + Gemini; fixtures in .scratch/fixtures)
 npm run clips:smoke        24 clip-selection + snapping + "Find new clips" checks (real Gemini + Groq, ffmpeg; fake AI for requests; throwaway DB)
-npm run render:smoke       15 render checks: captions, ffmpeg encode, cover frames, YouTube section, pipeline + render queue (throwaway DB, Cloudinary smoketest/)
-npm run copy:smoke         11 post-text + cover-idea + Banglish checks (2 real Gemini requests; fake AI for the copy stage; throwaway DB)
+npm run render:smoke       20 render checks: captions (key-word colour, hook), auto zoom, ffmpeg encode, cover frames, YouTube section, pipeline + render queue (throwaway DB, Cloudinary smoketest/)
+npm run copy:smoke         12 post-text + cover-idea + key-word + Banglish checks (2 real Gemini requests; fake AI for the copy stage; throwaway DB)
 npm run cleanup:smoke      8 cleanup-job checks (fake Cloudinary, throwaway DB) · `npm run cleanup:run` = dry run on the real data (-- --apply deletes)
 npm run backup:smoke       5 backup/restore checks (throwaway DBs, real Cloudinary smoketest/) · `npm run db:backup` (→ D:\backups) · `npm run db:restore -- <file> --into <db>`
 ```

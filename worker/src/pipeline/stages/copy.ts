@@ -3,7 +3,7 @@ import { reserveDailyCap } from "../../services/ai/daily-caps";
 import { generateJson, type JsonRequest, type LlmResult, type LlmTarget } from "../../services/ai/llm";
 import { ensureBanglish } from "../../services/copy/banglish";
 import { buildCopyPrompt, parseCopy } from "../../services/copy/prompt";
-import { captionScriptFor, Clip, getSettings, isAppError, Transcript, Video, visibleClipsFilter } from "../../shared";
+import { captionScriptFor, cleanEmphasis, Clip, getSettings, isAppError, Transcript, Video, visibleClipsFilter } from "../../shared";
 import { RunLostError } from "../run";
 import type { StageContext, StageHandler } from "./types";
 
@@ -77,8 +77,20 @@ async function runCopy(ctx: StageContext, deps: CopyDeps): Promise<void | "skipp
       for (const [i, clip] of todo.entries()) {
         const text = out.value.get(i + 1);
         if (!text) continue;
+        // Key words must be words really said in the clip, or they would never match a caption.
+        const emphasis = cleanEmphasis(text.emphasis, clip.transcriptText ?? "");
         const set = needsText(clip)
-          ? { copy: { ...text, language: fresh.language, script, model: out.target.model, promptVersion: version, writtenAt: now } }
+          ? {
+              copy: {
+                ...text,
+                emphasis: emphasis.length > 0 ? emphasis : undefined,
+                language: fresh.language,
+                script,
+                model: out.target.model,
+                promptVersion: version,
+                writtenAt: now,
+              },
+            }
           : { "copy.coverText": text.coverText, "copy.coverOptions": text.coverOptions };
         await Clip.updateOne({ _id: clip._id }, { $set: set, $unset: { copyRedoAt: 1, coverRedoAt: 1 } });
         wrote++;

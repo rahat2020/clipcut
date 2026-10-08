@@ -570,3 +570,24 @@ that was overdue and stays due would read as "kept longer"); the grace period is
 Per-video expiry is an override date ("keep N more days from today") — only while the files exist. The System page
 shows facts and never runs anything (migrations stay `npm run migrate`; no raw editor, ADMIN.md §3). The dashboard's
 Cloudinary number comes from its usage API (cached 10 min), MongoDB's from `dbStats` (data + indexes against 512 MB).
+
+**D55. Captions that look made, without word-by-word timing: key words in colour, a hook, auto zoom.** (2026-10-07,
+render@3, copy@4.) Rahat asked for the "wow" features seen in Choppity. Word-by-word highlighting was measured first:
+on 4 min of English with Whisper's real word times as the truth, our D42 estimate (graphemes spread over speech
+frames, per 3–15 s piece) puts word starts a median 240 ms / p90 730 ms off, and the right word would be lit only
+**36 %** of the time; snapping to loudness dips and a DP alignment didn't help (35–36 %). So nothing is lit word by
+word. Instead, all phrase-level (±0.3 s is invisible there):
+*Key words* — copy@4 asks, in the SAME request as the post text (no extra AI call), for 3–6 key words copied from what
+is said; the copy stage keeps only words really said in the clip (`cleanEmphasis`; Bangla endings allowed:
+"ফাহান" matches "ফাহানের"). Words under 3 characters without a digit are dropped ("না" came back once, 2026-10-08). Stored as `clip.copy.emphasis`, part of the render spec. Matched on the ORIGINAL words
+before a Banglish switch and carried by word times, so Banglish captions colour the same words. Without key words
+(clips written before copy@4) numbers are emphasised. Colour only — a size change inside the line cut the pop animation.
+*Hook* — the first ≤ 2 phrases starting in the first 2 s: 1.3× size with a bounce (style flag `hook`).
+*Styles* — Bold and Clean gain a yellow key-word colour; new Pop (big, 3 words, green), Fire (yellow, red key words),
+Minimal (small, no colour, no animation).
+*Auto zoom* — a 1.12→1 punch-in over the first 0.5 s, and a 1.08 push (0.25 s ramps) on lines with a key word: not in
+the first 2.5 s, ≥ 4 s apart, at most one per 5 s of clip. ffmpeg: per-frame `scale` (eval=frame) of the cropped
+source, then a fixed `crop` centred at 42 % of the height (where a face usually is) — one scale like before:
++7–9 % encode time on a 20 s clip, more on very short clips (8 s: 2.4 → 3.2 s). Checked by PSNR in render:smoke
+(zoomed at the start and on the key line, identical in between). On per clip unless switched off (`edit.autoZoom`).
+`RENDER_ENGINE_VERSION` render@3 (older render specs have no emphasis/zoom and re-render as they were).

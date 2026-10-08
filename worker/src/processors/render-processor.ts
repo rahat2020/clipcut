@@ -7,6 +7,7 @@ import { logger } from "../lib/logger";
 import { loadCaptionWords, produceRender, toAppError } from "../renders/produce";
 import { claimQueuedRender, RenderLostError } from "../renders/store";
 import { ensureBanglish } from "../services/copy/banglish";
+import { emphasisKeys } from "../services/render/captions";
 import { probeMedia } from "../services/media/ffprobe";
 import { downloadYouTubeSection } from "../services/media/ytdlp";
 import { downloadPrivateFile } from "../services/storage/cloudinary";
@@ -79,12 +80,14 @@ export async function processRenderJob(job: Job<RenderJobData>, deps: { scratchR
     if (!clip || !video) throw new AppError("NOT_FOUND", { message: "This clip was deleted." });
     if (video.retention?.assetsDeletedAt) throw new AppError("MEDIA_EXPIRED");
 
-    const spec = { ...render.spec, transcriptVersion: render.spec.transcriptVersion ?? 1 };
+    // Renders queued before render@3 have no emphasis / autoZoom: they render as they were asked.
+    const spec = { ...render.spec, transcriptVersion: render.spec.transcriptVersion ?? 1, emphasis: render.spec.emphasis ?? [], autoZoom: render.spec.autoZoom === true };
     const transcript =
       (await Transcript.findOne({ videoId: video._id, version: spec.transcriptVersion }).select({ segments: 1, words: 1 }).lean()) ??
       (await Transcript.findOne({ _id: video.currentTranscriptId, videoId: video._id }).select({ segments: 1, words: 1 }).lean());
     if (!transcript) throw new AppError("INTERNAL", { message: "The transcript is missing." });
     let words = await loadCaptionWords(transcript, log);
+    const emphasis = emphasisKeys(words, spec); // on the original words — Banglish keeps the times
     // Banglish captions: the words a trim added may not be spelled yet.
     if (spec.captionScript === "Latn" && video.language === "bn") {
       words = (await ensureBanglish({ transcriptId: transcript._id, words, stretches: [spec], log })).words;
@@ -138,7 +141,7 @@ export async function processRenderJob(job: Job<RenderJobData>, deps: { scratchR
     }
     handle.progress(0.1);
 
-    await produceRender({ handle, video, clipId: render.clipId, spec, words, input, workDir, log });
+    await produceRender({ handle, video, clipId: render.clipId, spec, words, emphasis, input, workDir, log });
     return "ready";
   } catch (err) {
     if (err instanceof RenderLostError) {

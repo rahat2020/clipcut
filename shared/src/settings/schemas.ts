@@ -98,7 +98,7 @@ export const aiSettingsSchema = z.object({
    */
   clipSelection: taskSchema({ model: "gemini-2.5-flash", temperature: 0.3, promptVersion: "clip-select@1" }).prefault({}),
 
-  copyWriting: taskSchema({ model: "gemini-2.5-flash", temperature: 0.7, promptVersion: "copy@3" }).prefault({}),
+  copyWriting: taskSchema({ model: "gemini-2.5-flash", temperature: 0.7, promptVersion: "copy@4" }).prefault({}),
 
   /**
    * Our own ceilings, kept below each provider's free tier so we never get throttled or

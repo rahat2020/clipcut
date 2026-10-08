@@ -33,6 +33,22 @@ export type CaptionStyle = {
   maxWords: number;
   /** A short grow-in when each phrase appears. */
   pop: boolean;
+  /** Key words (clip.copy.emphasis, else numbers) in this colour; null = no emphasis. */
+  highlightColour: string | null;
+  /** The first ~2 s of the clip (the hook) in bigger letters with a bounce. */
+  hook: boolean;
+};
+
+/**
+ * Hook and emphasis rules (render@3). Phrase-level only: Bangla word times are estimates (D42) —
+ * measured 2026-10-07, the right word would be lit only ~36 % of the time with word-by-word
+ * highlighting, so colour marks key words for the whole phrase instead.
+ */
+export const CAPTION_LOOK = {
+  /** Phrases that start before this are the hook. */
+  hookMs: 2_000,
+  hookMaxPhrases: 2,
+  hookScale: 1.3,
 };
 
 export const CAPTION_STYLES: Record<string, CaptionStyle> = {
@@ -52,6 +68,8 @@ export const CAPTION_STYLES: Record<string, CaptionStyle> = {
     maxChars: 18,
     maxWords: 4,
     pop: true,
+    highlightColour: "&H0000D4FF",
+    hook: true,
   },
   "preset:clean": {
     id: "preset:clean",
@@ -69,6 +87,65 @@ export const CAPTION_STYLES: Record<string, CaptionStyle> = {
     maxChars: 30,
     maxWords: 6,
     pop: false,
+    highlightColour: "&H0000D4FF",
+    hook: false,
+  },
+  "preset:pop": {
+    id: "preset:pop",
+    label: "Pop",
+    fontFamily: "Hind Siliguri",
+    bold: true,
+    size: 0.058,
+    primaryColour: "&H00FFFFFF",
+    outlineColour: "&H00000000",
+    backColour: "&H99000000",
+    borderStyle: 1,
+    outline: 0.006,
+    shadow: 0.002,
+    marginV: 0.2,
+    maxChars: 14,
+    maxWords: 3,
+    pop: true,
+    highlightColour: "&H0012FFA3",
+    hook: true,
+  },
+  "preset:fire": {
+    id: "preset:fire",
+    label: "Fire",
+    fontFamily: "Hind Siliguri",
+    bold: true,
+    size: 0.052,
+    primaryColour: "&H004DE1FF",
+    outlineColour: "&H00000000",
+    backColour: "&H99000000",
+    borderStyle: 1,
+    outline: 0.005,
+    shadow: 0.0015,
+    marginV: 0.17,
+    maxChars: 16,
+    maxWords: 4,
+    pop: true,
+    highlightColour: "&H002E4DFF",
+    hook: true,
+  },
+  "preset:minimal": {
+    id: "preset:minimal",
+    label: "Minimal",
+    fontFamily: "Hind Siliguri",
+    bold: true,
+    size: 0.034,
+    primaryColour: "&H00FFFFFF",
+    outlineColour: "&H66000000",
+    backColour: "&H80000000",
+    borderStyle: 1,
+    outline: 0.002,
+    shadow: 0.002,
+    marginV: 0.14,
+    maxChars: 28,
+    maxWords: 6,
+    pop: false,
+    highlightColour: null,
+    hook: false,
   },
 };
 

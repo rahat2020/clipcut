@@ -16,7 +16,7 @@ import type { AspectRatio, Language, Script } from "./enums";
  * Bump when the encoder or caption code changes the pixels for the same spec: the hash
  * changes with it, so the next request renders again instead of reusing an old MP4.
  */
-export const RENDER_ENGINE_VERSION = "render@2"; // @2: captions lower (Rahat, 2026-10-02), sound/size check
+export const RENDER_ENGINE_VERSION = "render@3"; // @2: captions lower (Rahat, 2026-10-02), sound/size check · @3: emphasis colour, hook, auto zoom (2026-10-07)
 
 /** Output size per aspect ratio (1080 on the short side — what Reels/Shorts/TikTok want). */
 export const RENDER_SIZES: Record<AspectRatio, { width: number; height: number }> = {
@@ -37,12 +37,16 @@ export type RenderSpec = {
   captionScript: Script;
   burnCaptions: boolean;
   transcriptVersion: number;
+  /** Emphasis tokens shown in the caption's second colour (sorted; clip.copy.emphasis). */
+  emphasis: string[];
+  autoZoom: boolean;
 };
 
 type ClipForSpec = {
   startMs: number;
   endMs: number;
-  edit?: { cropOffsetX?: number | null; captionStyleId?: string | null } | null;
+  edit?: { cropOffsetX?: number | null; captionStyleId?: string | null; autoZoom?: boolean | null } | null;
+  copy?: { emphasis?: readonly string[] | null } | null;
 };
 
 /** Caption letters: English → Latin; Bangla → Bangla script unless the user chose Banglish (Step 15). */
@@ -76,6 +80,8 @@ export function renderSpecForClip(clip: ClipForSpec, video: SpecVideo, transcrip
     captionScript: captionScriptFor(video),
     burnCaptions: true,
     transcriptVersion,
+    emphasis: [...(clip.copy?.emphasis ?? [])].sort(),
+    autoZoom: clip.edit?.autoZoom !== false,
   };
 }
 
@@ -93,6 +99,8 @@ export function renderSpecHash(spec: RenderSpec): string {
     spec.captionScript,
     spec.burnCaptions ? 1 : 0,
     spec.transcriptVersion,
+    (spec.emphasis ?? []).join("|"),
+    spec.autoZoom ? 1 : 0,
   ];
   return createHash("sha256").update(JSON.stringify(normalised)).digest("hex");
 }

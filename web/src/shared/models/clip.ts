@@ -41,6 +41,11 @@ const copySchema = new Schema(
     coverText: textField({ maxlength: 80 }),
     /** Up to 3 cover ideas, the first = `coverText` (copy@3+, Step 15.6). */
     coverOptions: { type: [coverOptionSchema], default: undefined },
+    /**
+     * Key words of the clip, as `emphasisToken`s, shown in the caption's second colour and used
+     * for auto zoom (copy@4+). Unset on older clips → numbers are emphasised instead.
+     */
+    emphasis: { type: [String], default: undefined },
     language: { type: String, enum: LANGUAGES },
     script: { type: String, enum: SCRIPTS },
     model: { type: String },
@@ -90,6 +95,8 @@ const clipSchema = new Schema(
       cropOffsetX: { type: Number, min: -1, max: 1, default: 0 },
       captionStyleId: { type: String, default: DEFAULT_CAPTION_STYLE_ID },
       captionScript: { type: String, enum: SCRIPTS, default: "Beng" },
+      /** Auto zoom (a punch-in at the start, a slow push on key lines). Unset = on. */
+      autoZoom: { type: Boolean },
       /**
        * The cut before the user first trimmed it (after snapping), for "Reset" and as an
        * accuracy signal (how far users move the AI's edges). Unset = never trimmed.

@@ -90,10 +90,10 @@ npm run pipeline:smoke # 19 queue/pipeline checks (incl. AI-quota wait, charged-
 npm run media:smoke    # 11 ingest/audio checks: real ffmpeg, yt-dlp, YouTube, Cloudinary smoketest/
 npm run transcribe:smoke # 15 checks: Gemini pieces (D42), Whisper fallback, charging; needs .scratch/fixtures (PROGRESS Step 7)
 npm run clips:smoke    # 24 checks: clip rules, snapping, loudness (ffmpeg), real Gemini/Groq, analyze stage, admin re-run, Find new clips (fake AI)
-npm run render:smoke   # 15 checks (incl. cover frames): captions/ASS, encode (Bangla captions, 60→30 fps), YouTube section, render stage + queue + stuck sweep
+npm run render:smoke   # 20 checks (incl. cover frames, key-word colour, hook, auto zoom by PSNR): captions/ASS, encode (Bangla captions, 60→30 fps), YouTube section, render stage + queue + stuck sweep
 npm run backup:smoke   # 5 checks: backup/restore round trip, damaged files refused, real Cloudinary upload/download
 npm run db:backup      # whole database → D:\backups (-- --cloud also uploads); db:restore -- <file> --into <db> (never the live DB)
 npm run cleanup:smoke  # 8 checks: the cleanup job with a fake Cloudinary (expiry, grace, retry, purge, orphans, guards)
 npm run cleanup:run    # dry run of the cleanup on the real data; -- --apply deletes, -- --orphans scans Cloudinary
-npm run copy:smoke     # 11 checks: post text + cover ideas (cleaning, prompt, real Gemini), cover-only rewrite, Banglish (alignment, real Gemini), copy stage with a fake AI
+npm run copy:smoke     # 12 checks: post text + cover ideas + key words (copy@4) (cleaning, prompt, real Gemini), cover-only rewrite, Banglish (alignment, real Gemini), copy stage with a fake AI
 ```

@@ -45,7 +45,8 @@ async function main() {
   const { logger } = await import("../src/lib/logger");
   const { runShutdownHooks } = await import("../src/lib/shutdown");
   const { runTool } = await import("../src/lib/exec");
-  const { buildAss, buildPhrases, clipWords, wordsFromSegments } = await import("../src/services/render/captions");
+  const { buildAss, buildPhrases, clipWords, emphasisKeys, wordsFromSegments } = await import("../src/services/render/captions");
+  const { zoomExpression, zoomFilters, zoomPlan, ZOOM_RULES } = await import("../src/services/render/zoom");
   const { COVER_FRAMES, encodeClip, extractCoverFrames, prepareFonts } = await import("../src/services/render/encode");
   const { probeMedia } = await import("../src/services/media/ffprobe");
   const { downloadYouTubeSection } = await import("../src/services/media/ytdlp");
@@ -91,7 +92,8 @@ async function main() {
   });
 
   await test("captions: ASS has the output size and font; speech can't inject ASS tags", () => {
-    const ass = buildAss([{ startMs: 0, endMs: 1_500, text: "হ্যালো {\\b1} ok" }], style, size);
+    const words = ["হ্যালো", "{\\b1}", "ok"].map((text) => ({ text, emphasis: false }));
+    const ass = buildAss([{ startMs: 0, endMs: 1_500, text: "হ্যালো {\\b1} ok", words }], style, size);
     assert(ass.includes("PlayResX: 1080") && ass.includes("PlayResY: 1920"), "play res");
     assert(ass.includes("Style: Caption,Hind Siliguri,96,"), `style line ${ass.split("\n").find((l) => l.startsWith("Style:"))}`);
     assert(ass.includes("Dialogue: 0,0:00:00.00,0:00:01.50,Caption") && ass.includes("হ্যালো (/b1) ok"), ass.split("\n").at(-2) ?? "");
@@ -117,6 +119,64 @@ async function main() {
     assert(renderSpecHash(bn) !== renderSpecHash({ ...bn, cropOffsetX: 0.5 }) && renderSpecHash(bn) !== renderSpecHash({ ...bn, transcriptVersion: 2 }), "hash ignores changes");
   });
 
+  // ── render@3: emphasis, hook, auto zoom ───────────────────
+
+  const EMPH_WORDS: [number, number, string][] = [
+    [0, 400, "ফাহানের"], [400, 800, "প্রথম"], [800, 1_200, "গোল।"],
+    [3_000, 3_400, "আমরা"], [3_400, 3_900, "২"], [3_900, 4_300, "গোলে"], [4_300, 4_800, "জিতেছি।"],
+    [9_000, 9_400, "এটা"], [9_400, 9_800, "দারুণ"], [9_800, 10_200, "ছিল।"],
+  ];
+
+  await test("emphasis: key words matched on the original words (Bangla endings too), kept through Banglish by their times; no key words → numbers", () => {
+    const keys = emphasisKeys(EMPH_WORDS, { startMs: 0, endMs: 11_000, emphasis: ["ফাহান", "গোল"] });
+    assert(keys.size === 3 && keys.has("0_400") && keys.has("800_1200") && keys.has("3900_4300"), `keys ${[...keys]}`);
+    const banglish = EMPH_WORDS.map(([s, e], i) => [s, e, ["Fahaner", "prothom", "gol.", "amra", "2", "gole", "jitechi.", "eta", "darun", "chhilo."][i]!] as [number, number, string]);
+    const flagged = clipWords(banglish, 0, 11_000, keys).filter((w) => w[3]).map((w) => w[2]);
+    assert(flagged.join(",") === "Fahaner,gol.,gole", `banglish flags ${flagged}`);
+    const numbers = emphasisKeys(EMPH_WORDS, { startMs: 0, endMs: 11_000, emphasis: [] });
+    assert(numbers.size === 1 && numbers.has("3400_3900"), `fallback ${[...numbers]}`);
+    assert(emphasisKeys(EMPH_WORDS, { startMs: 5_000, endMs: 11_000, emphasis: ["গোল"] }).size === 0, "a word outside the clip was emphasised");
+  });
+
+  await test("captions: key words in the style's second colour; the hook (first 2 s) bigger with a bounce; Minimal has neither", () => {
+    const keys = emphasisKeys(EMPH_WORDS, { startMs: 0, endMs: 11_000, emphasis: ["ফাহান", "গোল"] });
+    const phrases = buildPhrases(clipWords(EMPH_WORDS, 0, 11_000, keys), style, 11_000);
+    const lines = buildAss(phrases, style, size).split("\n").filter((l) => l.startsWith("Dialogue:"));
+    assert(lines[0]!.includes("{\\1c&H00D4FF&}ফাহানের{\\1c&HFFFFFF&}") && lines[0]!.includes("{\\1c&H00D4FF&}গোল{\\1c&HFFFFFF&}"), lines[0]!);
+    assert(lines[0]!.includes("\\fs125") && lines[0]!.includes("\\t(0,110,"), `hook missing: ${lines[0]}`);
+    const late = lines.find((l) => l.includes("দারুণ"))!;
+    const sizeTag = /\\fs\d/; // \fs125, not \fscx88
+    assert(!sizeTag.test(late) && late.includes("\\fscx88"), `a phrase after 2 s got the hook: ${late}`);
+    const minimal = buildAss(phrases, captionStyle("preset:minimal"), size);
+    assert(!minimal.includes("\\1c") && !sizeTag.test(minimal), "minimal has colour or hook");
+    for (const id of ["preset:pop", "preset:fire", "preset:minimal"]) assert(captionStyle(id).id === id, `${id} missing`);
+  });
+
+  await test("zoom: pushes only on lines with key words, never in the hook, spread out; the expression starts zoomed in and settles", () => {
+    const line = (startMs: number, endMs: number, emphasis: boolean) => ({ startMs, endMs, text: "x", words: [{ text: "x", emphasis }] });
+    const phrases = [line(500, 1_500, true), line(3_000, 4_000, true), line(5_000, 6_000, true), line(9_000, 9_400, true), line(12_000, 13_000, false), line(15_000, 20_000, true)];
+    const plan = zoomPlan(phrases, 30_000);
+    assert(plan.length === 3 && plan[0]!.startMs === 3_000 && plan[1]!.startMs === 9_000 && plan[2]!.startMs === 15_000, JSON.stringify(plan));
+    assert(plan[1]!.endMs === 9_000 + ZOOM_RULES.minMs && plan[2]!.endMs === 15_000 + ZOOM_RULES.maxMs, "push length not clamped");
+    assert(zoomPlan(phrases, 6_000).length === 1, "too many pushes for a short clip");
+    const expr = zoomExpression(plan);
+    const z = new Function("t", `const clip=(x,a,b)=>Math.min(Math.max(x,a),b),pow=Math.pow,max=Math.max,min=Math.min;return ${expr};`) as (t: number) => number;
+    const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+    assert(near(z(0), 1.12) && near(z(1), 1) && near(z(3.5), 1.08) && near(z(7), 1), `z: ${[0, 1, 3.5, 7].map(z)}`);
+    const [scale, crop] = zoomFilters(1080, 1920, plan);
+    assert(scale!.includes("eval=frame") && crop === "crop=1080:1920:x='(iw-1080)/2':y='(ih-1920)*0.42'", `${scale} | ${crop}`);
+  });
+
+  await test("spec: key words and auto zoom are part of the spec (zoom on unless turned off); hash changes with them", () => {
+    const base = { startMs: 0, endMs: 10_000 };
+    const a = renderSpecForClip({ ...base, copy: { emphasis: ["গোল", "ফাহান"] } }, { language: "bn" }, 1);
+    assert(a.autoZoom === true && a.emphasis.join() === "গোল,ফাহান", JSON.stringify(a));
+    const off = renderSpecForClip({ ...base, edit: { autoZoom: false }, copy: { emphasis: ["ফাহান", "গোল"] } }, { language: "bn" }, 1);
+    assert(off.autoZoom === false, "autoZoom false ignored");
+    assert(renderSpecHash(a) !== renderSpecHash({ ...a, autoZoom: false }) && renderSpecHash(a) !== renderSpecHash({ ...a, emphasis: [] }), "hash ignores zoom or key words");
+    assert(renderSpecHash(a) === renderSpecHash(renderSpecForClip({ ...base, copy: { emphasis: ["ফাহান", "গোল"] } }, { language: "bn" }, 1)), "key word order changed the hash");
+  });
+
   // ── real ffmpeg ───────────────────────────────────────────
 
   const wide = path.join(SCRATCH, "wide.mp4");
@@ -131,7 +191,7 @@ async function main() {
     await writeFile(path.join(SCRATCH, "captions.ass"), buildAss(phrases, style, size));
     const out = path.join(SCRATCH, "out.mp4");
     const t0 = Date.now();
-    await encodeClip({ input: wide, output: out, inputStartMs: 6_000, durationMs: 12_000, aspect: "9:16", width: 1080, height: 1920, cropOffsetX: 0, workDir: SCRATCH, assFile: "captions.ass", sourceFps: 30, requireAudio: true, crf: 21, preset: "veryfast" });
+    await encodeClip({ input: wide, output: out, inputStartMs: 6_000, durationMs: 12_000, aspect: "9:16", width: 1080, height: 1920, cropOffsetX: 0, workDir: SCRATCH, assFile: "captions.ass", sourceFps: 30, requireAudio: true, crf: 21, preset: "veryfast", zoom: null });
     const encodeMs = Date.now() - t0;
     const p = await probeMedia(out);
     assert(p.width === 1080 && p.height === 1920 && p.videoCodec === "h264" && p.audioCodec === "aac", JSON.stringify(p));
@@ -140,11 +200,38 @@ async function main() {
     console.log(`   (12 s clip encoded in ${(encodeMs / 1000).toFixed(1)} s; frame → ${path.join(SCRATCH, "frame.png")})`);
   });
 
+  await test("encode: auto zoom keeps 1080×1920 and the exact length; zoomed at the start and on the key line, normal in between", async () => {
+    const plain = path.join(SCRATCH, "zoom-plain.mp4");
+    const zoomed = path.join(SCRATCH, "zoom-on.mp4");
+    const common = { input: wide, inputStartMs: 6_000, durationMs: 8_000, aspect: "9:16" as const, width: 1080, height: 1920, cropOffsetX: 0, workDir: SCRATCH, assFile: null, sourceFps: 30, requireAudio: true, crf: 21, preset: "veryfast" };
+    let t0 = Date.now();
+    await encodeClip({ ...common, output: plain, zoom: null });
+    const plainMs = Date.now() - t0;
+    t0 = Date.now();
+    await encodeClip({ ...common, output: zoomed, zoom: [{ startMs: 4_000, endMs: 6_000 }] });
+    const zoomMs = Date.now() - t0;
+    const p = await probeMedia(zoomed);
+    assert(p.width === 1080 && p.height === 1920 && Math.abs(p.durationMs - 8_000) < 150, JSON.stringify(p));
+    // PSNR between the two renders at a moment: equal pictures → very high; zoomed vs not → low.
+    const psnr = async (sec: number) => {
+      const lines: string[] = [];
+      await runTool(env.FFMPEG_PATH, ["-hide_banner", "-ss", String(sec), "-i", plain, "-ss", String(sec), "-i", zoomed, "-frames:v", "1", "-lavfi", "psnr", "-f", "null", "-"], {
+        timeoutMs: 60_000,
+        onStderrLine: (l) => lines.push(l),
+      }).catch(() => {});
+      const m = /average:(inf|[\d.]+)/.exec(lines.join("\n"));
+      return m ? (m[1] === "inf" ? 99 : Number(m[1])) : -1;
+    };
+    const [atStart, between, onLine] = [await psnr(0), await psnr(2.5), await psnr(5)];
+    assert(atStart >= 0 && atStart < 30 && between > 35 && onLine < 30, `PSNR start ${atStart} · between ${between} · key line ${onLine}`);
+    console.log(`   (8 s clip: ${(plainMs / 1000).toFixed(1)} s plain, ${(zoomMs / 1000).toFixed(1)} s with zoom)`);
+  });
+
   await test("encode: 60 fps source → 30 fps; a vertical source fills 9:16 without black bars", async () => {
     const fast = path.join(SCRATCH, "fast.mp4");
     await ff(["-f", "lavfi", "-i", "testsrc2=size=720x1280:rate=60", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "4", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", fast]);
     const out = path.join(SCRATCH, "fast-out.mp4");
-    await encodeClip({ input: fast, output: out, inputStartMs: 500, durationMs: 3_000, aspect: "9:16", width: 1080, height: 1920, cropOffsetX: -1, workDir: SCRATCH, assFile: null, sourceFps: 60, requireAudio: true, crf: 23, preset: "veryfast" });
+    await encodeClip({ input: fast, output: out, inputStartMs: 500, durationMs: 3_000, aspect: "9:16", width: 1080, height: 1920, cropOffsetX: -1, workDir: SCRATCH, assFile: null, sourceFps: 60, requireAudio: true, crf: 23, preset: "veryfast", zoom: null });
     const p = await probeMedia(out);
     assert(p.width === 1080 && p.height === 1920 && Math.round(p.fps ?? 0) === 30, JSON.stringify(p));
   });
@@ -167,7 +254,7 @@ async function main() {
     const mute = path.join(SCRATCH, "mute.mp4");
     await ff(["-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-t", "3", "-c:v", "libx264", "-preset", "ultrafast", mute]);
     let failed = false;
-    await encodeClip({ input: mute, output: path.join(SCRATCH, "mute-out.mp4"), inputStartMs: 0, durationMs: 2_000, aspect: "9:16", width: 1080, height: 1920, cropOffsetX: 0, workDir: SCRATCH, assFile: null, sourceFps: 30, requireAudio: true, crf: 23, preset: "veryfast" }).catch(() => {
+    await encodeClip({ input: mute, output: path.join(SCRATCH, "mute-out.mp4"), inputStartMs: 0, durationMs: 2_000, aspect: "9:16", width: 1080, height: 1920, cropOffsetX: 0, workDir: SCRATCH, assFile: null, sourceFps: 30, requireAudio: true, crf: 23, preset: "veryfast", zoom: null }).catch(() => {
       failed = true;
     });
     assert(failed, "encoded a silent clip although sound was required");

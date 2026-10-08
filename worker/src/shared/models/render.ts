@@ -21,6 +21,10 @@ const renderSpecSchema = new Schema(
     captionScript: { type: String, enum: SCRIPTS, required: true },
     burnCaptions: { type: Boolean, default: true },
     transcriptVersion: { type: Number, min: 1 },
+    /** Caption words in the second colour (render@3). Missing on older renders = none. */
+    emphasis: { type: [String], default: undefined },
+    /** Auto zoom (render@3). Missing on older renders = off. */
+    autoZoom: { type: Boolean },
   },
   { _id: false },
 );

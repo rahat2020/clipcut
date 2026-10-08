@@ -39,6 +39,30 @@ Step 8 (small eval set) + Step 11 (prompt iteration) wait until Rahat has the ev
 
 ## Step log
 
+### "Wow" captions + auto zoom ✅ (2026-10-07, D55) — after Rahat's Choppity comparison
+
+- Measured first: word-by-word highlighting isn't possible with our Bangla word times (right word lit 36 % of the time;
+  `worker/.scratch/research/measure-timing.ts`). Built the phrase-level version instead: AI key words in a second
+  colour (copy@4, same request), a bigger bouncing hook for the first 2 s, three new styles (Pop, Fire, Minimal) and
+  auto zoom (punch-in + pushes on key lines), on by default with a switch in the clip's Captions tab.
+- Code: `shared` caption-styles (highlightColour, hook, CAPTION_LOOK), post-copy (`emphasisToken`, `isEmphasisWord`,
+  `cleanEmphasis`), render spec (`emphasis`, `autoZoom`, render@3), clip/render models; worker
+  `services/render/captions.ts` (`emphasisKeys`, colour tags, hook), new `services/render/zoom.ts`, encode, produce,
+  render stage + processor (key words decided before Banglish), copy prompt copy@4 + copy stage; web clip edit
+  (`autoZoom`), clip view, style notes + zoom switch in `clip-review.tsx`.
+- **Verified:** render:smoke 20/20 (+5: key words incl. Bangla endings and Banglish, colour/hook ASS, zoom plan +
+  expression values, spec/hash, real encode with zoom checked by PSNR), copy:smoke 12/12 (+1; real Gemini gave
+  "ফাহান গোল হাঙ্গার" / "সাফে ফোকাস মন খারাপ" for the two test clips), review:smoke 16/16, typecheck + lint clean.
+  Frames looked at: Bangla conjuncts correct, colours where expected.
+- **Rahat:** Admin → AI models → Copy writing → prompt `copy@4` (his saved settings say copy@3, so the new default
+  doesn't apply), restart the worker. Old clips get key words when their post text is written again; until then
+  numbers are coloured. NOT yet seen on a real talking-head video — the zoom centre (42 % height) is a guess to check.
+- **Rahat's test (2026-10-08, video 6ac73bb5…, copy@4 on):** all 6 clips got key words; clip 1's render shows "মেসির" /
+  "মাসিয়ায়" in yellow, the bigger hook and the opening punch-in (frames checked). One clip's key words held "না",
+  which would colour every "না" → `cleanEmphasis` / `isEmphasisWord` now drop words under 3 characters without a digit
+  (also guards key words already stored). copy:smoke 12/12, render:smoke 20/20.
+
+
 ### Step 16 — Admin panel completion ✅ (2026-10-06, D54)
 
 - **Limits & plans** (`/admin/limits`): every plan's limits as a form, add a plan (copy of the default), remove one only

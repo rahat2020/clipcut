@@ -3,6 +3,7 @@ import path from "node:path";
 import { loadCaptionWords, produceRender, toAppError } from "../../renders/produce";
 import { claimRenderForPipeline, queueRenderForPipeline, RenderLostError, type PipelineClaim } from "../../renders/store";
 import { ensureBanglish } from "../../services/copy/banglish";
+import { emphasisKeys } from "../../services/render/captions";
 import { AppError, Clip, getSettings, renderSpecForClip, specVideo, Transcript, Video } from "../../shared";
 import { RunLostError } from "../run";
 import { ensureSource, hasLocalSource } from "../source";
@@ -33,7 +34,7 @@ export const render: StageHandler = async (ctx) => {
   const clips = await Clip.find({ videoId: video._id, analysisRunId, deletedAt: null })
     .sort({ rank: 1 })
     .limit(cfg.autoRenderTop)
-    .select({ _id: 1, startMs: 1, endMs: 1, edit: 1, latestRenderId: 1 })
+    .select({ _id: 1, startMs: 1, endMs: 1, edit: 1, "copy.emphasis": 1, latestRenderId: 1 })
     .lean();
   if (clips.length === 0) return "skipped";
   const queueOnly = video.source.type === "youtube" && !(await hasLocalSource(ctx));
@@ -65,6 +66,7 @@ export const render: StageHandler = async (ctx) => {
   if (todo.length === 0) return;
 
   let words = await loadCaptionWords(transcript, log);
+  const original = words; // emphasis is decided on these — Banglish keeps the times
   if (video.language === "bn" && todo.some((t) => t.spec.captionScript === "Latn")) {
     try {
       words = (await ensureBanglish({ transcriptId: transcript._id, words, stretches: todo.map((t) => t.spec), log, signal: run.signal })).words;
@@ -93,6 +95,7 @@ export const render: StageHandler = async (ctx) => {
         clipId: item.clip._id,
         spec: item.spec,
         words,
+        emphasis: emphasisKeys(original, item.spec),
         input,
         workDir,
         signal: run.signal,

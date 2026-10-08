@@ -219,10 +219,10 @@ we'd be tuning blind.
 | `ai` | `{ rawStartMs, rawEndMs, score, momentType, reason }?` | what the AI proposed **before** snapping — needed to evaluate snapping separately from selection |
 | `snap` | `{ version, basis, startRule, endRule }?` | how the cut was made (D41). `version` `snap@1` or `lines` (whole-line times only; Step 9 clips have no version). `basis` `words+audio` · `words` · `segments+audio` · `segments` · `lines`. Rules: start `clean`/`earlier`/`later`/`soft`/`none`, end the same + `max_cut`; Step 9 clips: `line_start`/`extended` · `line_end`/`extended`/`trimmed`/`max_cut` |
 | `transcriptText` | string | text inside the clip |
-| `copy` | `{ title, description, hook, hashtags[], coverText?, coverOptions?[{text, highlight}], language, script, model, promptVersion, writtenAt?, editedAt? }?` | hook is always labelled AI-written in the UI; written by the copy stage (D48), `editedAt` when the user changed it |
+| `copy` | `{ title, description, hook, hashtags[], coverText?, coverOptions?[{text, highlight}], emphasis?[], language, script, model, promptVersion, writtenAt?, editedAt? }?` | hook is always labelled AI-written in the UI; written by the copy stage (D48), `editedAt` when the user changed it; `emphasis` = the clip's key words as `emphasisToken`s (copy@4+, D55) — caption second colour + auto zoom; unset → numbers are emphasised |
 | `copyRedoAt` | Date? | user asked for new post text; the copy stage clears it |
 | `coverRedoAt` | Date? | user asked for new cover words only ("Suggest words"); the copy stage rewrites `copy.coverText`/`coverOptions` and clears it |
-| `edit` | `{ cropOffsetX, captionStyleId, captionScript, aiStartMs?, aiEndMs? }` | user adjustments; `cropOffsetX` in −1…1; `aiStartMs/aiEndMs` = the cut before the first trim (unset = never trimmed, D46) |
+| `edit` | `{ cropOffsetX, captionStyleId, captionScript, autoZoom?, aiStartMs?, aiEndMs? }` | user adjustments; `autoZoom` unset = on (D55); `cropOffsetX` in −1…1; `aiStartMs/aiEndMs` = the cut before the first trim (unset = never trimmed, D46) |
 | `status` | `'suggested' \| 'approved' \| 'rejected'` | |
 | `feedback` | `{ reason?, at }?` | why the user rejected it — accuracy signal |
 | `signals` | `{ rendered, downloaded }` | implicit "this clip was good" labels |
@@ -239,7 +239,7 @@ One encoded MP4 for one clip with one set of settings.
 | Field | Type | Notes |
 |---|---|---|
 | `clipId`, `videoId`, `userId` | ObjectId | |
-| `spec` | `{ startMs, endMs, aspectRatio, width, height, cropOffsetX, captionStyleId, captionScript, burnCaptions, transcriptVersion }` | everything that affects the output pixels |
+| `spec` | `{ startMs, endMs, aspectRatio, width, height, cropOffsetX, captionStyleId, captionScript, burnCaptions, transcriptVersion, emphasis?[], autoZoom? }` | everything that affects the output pixels; `emphasis`/`autoZoom` from render@3 (missing on older renders = none / off) |
 | `specHash` | string | SHA-256 of the normalised spec |
 | `status` | `'queued' \| 'rendering' \| 'ready' \| 'failed'` | |
 | `progress`, `attempts` | number | |

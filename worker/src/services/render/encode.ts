@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { env } from "../../config/env";
 import { runTool } from "../../lib/exec";
 import type { AspectRatio } from "../../shared";
+import { zoomFilters, type ZoomWindow } from "./zoom";
 
 /** Caption fonts shipped with the worker (OFL; see assets/fonts/OFL.txt). */
 export const FONTS_DIR = fileURLToPath(new URL("../../../assets/fonts", import.meta.url));
@@ -54,6 +55,8 @@ export type EncodeArgs = {
   sourceFps: number | null;
   crf: number;
   preset: string;
+  /** Auto zoom pushes (zoom.ts); null = no zoom at all (not even the punch-in). */
+  zoom: readonly ZoomWindow[] | null;
   signal?: AbortSignal;
   onProgress?: (fraction: number) => void;
 };
@@ -118,7 +121,8 @@ export async function extractCoverFrames(args: {
  * starts the output clock at 0 — the ASS times are relative to the clip start to match.
  */
 export async function encodeClip(args: EncodeArgs): Promise<void> {
-  const filters = [cropFilter(args.aspect, args.cropOffsetX), `scale=${args.width}:${args.height}:flags=lanczos`, "setsar=1"];
+  const scale = args.zoom ? zoomFilters(args.width, args.height, args.zoom) : [`scale=${args.width}:${args.height}:flags=lanczos`];
+  const filters = [cropFilter(args.aspect, args.cropOffsetX), ...scale, "setsar=1"];
   if (args.sourceFps && args.sourceFps > 30.5) filters.push("fps=30");
   if (args.assFile) filters.push(`ass=${args.assFile}:fontsdir=fonts:shaping=complex`);
 
